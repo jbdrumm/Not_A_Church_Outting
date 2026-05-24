@@ -36,7 +36,8 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [view, setView] = useState('mini') // 'mini' | 'detail'
+  const [view, setView] = useState('mini')
+  const [dbError, setDbError] = useState(null) // 'mini' | 'detail'
   const [currentPlayer] = useState(() => {
     try { return JSON.parse(localStorage.getItem('golf_player')) } catch { return null }
   })
@@ -102,6 +103,7 @@ export default function LeaderboardPage() {
       setLastUpdated(new Date())
     } catch (err) {
       console.error('Leaderboard fetch error:', err)
+      setDbError(err.message)
     } finally {
       setLoading(false)
     }
@@ -164,6 +166,13 @@ export default function LeaderboardPage() {
         <div style={{ textAlign: 'center', padding: 48 }}>
           <div className="spinner" style={{ margin: '0 auto 12px' }} />
           <p className="text-muted text-sm">Loading scores...</p>
+        </div>
+      ) : dbError ? (
+        <div style={{ textAlign: 'center', padding: 32 }}>
+          <p style={{ fontSize: '1.5rem', marginBottom: 8 }}>⚠️</p>
+          <p className="text-muted text-sm" style={{ marginBottom: 8 }}>Error loading leaderboard</p>
+          <p className="text-xs" style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)', wordBreak: 'break-all', padding: '0 16px' }}>{dbError}</p>
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => { setDbError(null); fetchData() }}>Retry</button>
         </div>
       ) : standings.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 48 }}>
