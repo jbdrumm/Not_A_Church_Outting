@@ -7,7 +7,7 @@ UPDATE courses SET slope_rating = 137,  course_rating = 72.8, par = 72
   WHERE name = 'El Dorado Golf Club';
 UPDATE courses SET slope_rating = 130,  course_rating = 72.6, par = 72
   WHERE name = 'Emerald Vale Golf Course';
-UPDATE courses SET slope_rating = 113,  course_rating = 70.0, par = 72
+UPDATE courses SET slope_rating = 113,  course_rating = 70.0, par = 71
   WHERE name = 'Hemlock Golf Club';
 
 -- Rename + fix Lakewood (it's Lakewood ON THE GREEN in Cadillac, par 70)
@@ -288,42 +288,44 @@ ON CONFLICT (course_id, hole_number) DO UPDATE SET
 
 
 -- ================================================================
--- HEMLOCK GOLF CLUB — NOW FULLY CONFIRMED
--- Source: Scorecard image
--- Par 72 (front 36, back 36)
+-- HEMLOCK GOLF CLUB — FULLY CONFIRMED
+-- Source: Scorecard image (confirmed hole 5=par3, hole 6=par5)
+-- Par 71 (front 35, back 36)
 -- All pars and handicap ranks confirmed
--- Tees: Black / Green / Blue / White (plates) / Gold (plates)
--- Using Blue as yardage_blue, White(plates) as yardage_white
+-- Tees: Black / Green / Blue / White(plates) / Gold(plates)
+-- Using Blue as yardage_blue, Black as yardage_black
+-- White(plates) tees are a short forward tee — not used as primary
 -- ================================================================
+UPDATE courses SET par = 71 WHERE name = 'Hemlock Golf Club';
+
 WITH course AS (SELECT id FROM courses WHERE name = 'Hemlock Golf Club')
 INSERT INTO course_holes (course_id, hole_number, par, handicap_rank,
-                          yardage_white, yardage_blue, yardage_black)
-SELECT course.id, h.hole_number, h.par, h.handicap_rank,
-       h.white, h.blue, h.black
+                          yardage_blue, yardage_black)
+SELECT course.id, h.hole_number, h.par, h.handicap_rank, h.blue, h.black
 FROM course, (VALUES
--- Hole  Par  Hdcp  White  Blue   Black
-  (1,   4,   8,  360,  388,  432),
-  (2,   4,  16,  278,  298,  330),
-  (3,   4,  12,  241,  262,  302),
-  (4,   3,  14,  230,  301,  363),
-  (5,   5,  18,  133,  156,  184),
-  (6,   4,   6,  282,  412,  558),
-  (7,   4,   2,  282,  370,  475),
-  (8,   4,  10,  296,  386,  420),
-  (9,   4,   4,  303,  386,  424),
-  (10,  4,   7,  377,  399,  493),
-  (11,  5,   3,  354,  469,  511),
-  (12,  4,   1,  431,  505,  580),
-  (13,  3,  15,  129,  154,  198),
-  (14,  4,   9,  268,  329,  341),
-  (15,  4,  17,  117,  368,  402),
-  (16,  4,  13,  345,  372,  404),
-  (17,  3,  11,  333,  372,  401),
-  (18,  5,   5,  305,  306,  401)
-) AS h(hole_number, par, handicap_rank, white, blue, black)
+-- Hole  Par  Hdcp  Blue   Black
+  (1,   4,   8,  388,  432),
+  (2,   4,  16,  298,  330),
+  (3,   4,  12,  262,  302),
+  (4,   3,  14,  301,  363),
+  (5,   3,  18,  156,  184),  -- confirmed par 3
+  (6,   5,   6,  518,  558),  -- confirmed par 5 (518 blue yds)
+  (7,   4,   2,  412,  475),
+  (8,   4,  10,  370,  420),
+  (9,   4,   4,  386,  424),
+  (10,  4,   7,  399,  493),
+  (11,  5,   3,  469,  511),
+  (12,  4,   1,  505,  580),
+  (13,  3,  15,  154,  198),
+  (14,  4,   9,  329,  341),
+  (15,  4,  17,  368,  402),
+  (16,  4,  13,  372,  404),
+  (17,  3,  11,  372,  401),
+  (18,  5,   5,  306,  401)
+) AS h(hole_number, par, handicap_rank, blue, black)
 ON CONFLICT (course_id, hole_number) DO UPDATE SET
   par = EXCLUDED.par, handicap_rank = EXCLUDED.handicap_rank,
-  yardage_white = EXCLUDED.yardage_white, yardage_blue = EXCLUDED.yardage_blue,
+  yardage_blue  = EXCLUDED.yardage_blue,
   yardage_black = EXCLUDED.yardage_black;
 
 
@@ -380,7 +382,7 @@ UPDATE courses SET par = 71, slope_rating = 131, course_rating = 71.2
 -- Manistee Revenge:   ✅ ALL 18 confirmed (scorecard image)
 -- Manistee Retreat:   ✅ ALL 18 confirmed (scorecard image)
 -- Stonegate:          ✅ ALL 18 confirmed (scorecard image)
--- Hemlock:            ✅ ALL 18 confirmed (scorecard image)
+-- Hemlock:            ✅ ALL 18 confirmed (scorecard image, par 71)
 -- Emerald Vale:       ✅ ALL 18 confirmed (scorecard image)
 -- Lakewood on Green:  ❌ No hole data — scorecard "coming soon" per website
 -- Evergreen Resort:   ❌ No hole data — bluegolf blocked
@@ -431,7 +433,7 @@ ON CONFLICT (course_id, hole_number) DO UPDATE SET
 -- Manistee Revenge:   ✅ ALL 18 confirmed (scorecard image)
 -- Manistee Retreat:   ✅ ALL 18 confirmed (scorecard image)
 -- Stonegate:          ✅ ALL 18 confirmed (scorecard image)
--- Hemlock:            ✅ ALL 18 confirmed (scorecard image)
+-- Hemlock:            ✅ ALL 18 confirmed (scorecard image, par 71)
 -- Emerald Vale:       ✅ ALL 18 confirmed (scorecard image)
 -- Evergreen Resort:   ✅ ALL 18 confirmed (GolfNow screenshot)
 -- Lakewood on Green:  ❌ No hole data — scorecard "coming soon" per website
