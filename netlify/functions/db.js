@@ -253,18 +253,17 @@ async function handleAction(sql, action, p = {}) {
       const rows = await sql`
         INSERT INTO round_scores (event_id, player_id, course_id, day, round_time,
           is_scramble, hole_scores, total_score, holes_completed, is_complete,
-          scramble_team_id, updated_at)
+          scramble_team_id)
         VALUES (${event_id}, ${player_id}, ${course_id}, ${day}, ${round_time},
           ${is_scramble || false}, ${JSON.stringify(hole_scores || {})},
           ${total_score || 0}, ${holes_completed || 0}, ${is_complete || false},
-          ${scramble_team_id || null}, NOW())
+          ${scramble_team_id || null})
         ON CONFLICT (event_id, player_id, course_id, day, round_time) DO UPDATE SET
           hole_scores = EXCLUDED.hole_scores,
           total_score = EXCLUDED.total_score,
           holes_completed = EXCLUDED.holes_completed,
           is_complete = EXCLUDED.is_complete,
-          scramble_team_id = EXCLUDED.scramble_team_id,
-          updated_at = NOW()
+          scramble_team_id = EXCLUDED.scramble_team_id
         RETURNING *`
       return { data: rows[0] }
     }

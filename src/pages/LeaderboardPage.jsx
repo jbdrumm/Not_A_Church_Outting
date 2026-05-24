@@ -42,39 +42,42 @@ export default function LeaderboardPage() {
   })
 
   const fetchData = useCallback(async () => {
-    const { data: ev } = await db('get_current_event')
-    if (!ev) { setLoading(false); return }
-    setEvent(ev)
+    try {
+      const { data: ev } = await db('get_current_event')
+      if (!ev) { setLoading(false); return }
+      setEvent(ev)
 
-    const roundInfo = getActiveRound(ev.status)
-    // Only show leaderboard for stroke play morning rounds
-    if (!roundInfo?.round || roundInfo.round.includes('afternoon') || roundInfo.round === 'sunday_morning') {
-      setStandings([])
+      const roundInfo = getActiveRound(ev.status)
+      // Only show leaderboard for stroke play morning rounds
+      if (!roundInfo?.round || roundInfo.round.includes('afternoon') || roundInfo.round === 'sunday_morning') {
+        setStandings([])
+        setLoading(false)
+        return
+      }
+
+      const day = roundInfo.round.split('_')[0]
+      const course = getCourseForRound(ev, day)
+
+      const [holesRes, scoresRes] = await Promise.all([
+        course?.id ? db('get_course_holes', { course_id: course.id }) : Promise.resolve({ data: [] }),
+        db('get_round_scores', { event_id: ev.id, day, round_time: 'morning' }),
+      ])
+
+      const courseHoles = holesRes.data || []
+      setHoles(courseHoles)
+
+      const scored = (scoresRes.data || []).map(sc => ({
+        ...sc,
+        hole_scores: typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : (sc.hole_scores || {}),
+      }))
+
+      setStandings(sortPlayersByScore(scored, courseHoles))
+      setLastUpdated(new Date())
+    } catch (err) {
+      console.error('Leaderboard fetch error:', err)
+    } finally {
       setLoading(false)
-      return
     }
-
-    const day = roundInfo.round.split('_')[0]
-    const course = getCourseForRound(ev, day)
-
-    const [holesRes, scoresRes] = await Promise.all([
-      course?.id ? db('get_course_holes', { course_id: course.id }) : Promise.resolve({ data: [] }),
-      db('get_round_scores', { event_id: ev.id, day, round_time: 'morning' }),
-    ])
-
-    const courseHoles = holesRes.data || []
-    setHoles(courseHoles)
-
-    // Show ALL event players on the leaderboard — not just those with scores
-    // Players without scores appear at the bottom with dashes
-    const scored = (scoresRes.data || []).map(sc => ({
-      ...sc,
-      hole_scores: typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : (sc.hole_scores || {}),
-    }))
-
-    setStandings(sortPlayersByScore(scored, courseHoles))
-    setLastUpdated(new Date())
-    setLoading(false)
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])

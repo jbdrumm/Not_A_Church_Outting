@@ -57,7 +57,7 @@ export default function HomePage() {
       <div className="container">
         <div style={{ paddingTop: 32, paddingBottom: 24, textAlign: 'center' }}>
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--gold)', marginBottom: 8 }}>⛳ Annual</p>
-          <h1 style={{ lineHeight: 1.1 }}>Men's Golf<br />Outing</h1>
+          <h1 style={{ lineHeight: 1.1 }}>{event?.name || 'Golf Outing'}</h1>
           {player ? (
             <div style={{ marginTop: 16 }}>
               <p style={{ color: 'var(--green-bright)', fontSize: '0.9rem', marginBottom: 8 }}>Welcome back, <strong>{player.name}</strong></p>

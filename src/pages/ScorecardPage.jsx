@@ -215,7 +215,7 @@ export default function ScorecardPage() {
                     fontWeight: activePlayerId === p.player_id ? 700 : 400,
                     whiteSpace: 'nowrap', flexShrink: 0,
                   }}>
-                  {isMe ? `${p.name} (you)` : p.name}
+                  {p.name}
                   {playerTotal > 0 && <span style={{ marginLeft: 6, fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{playerTotal}</span>}
                 </button>
               )
