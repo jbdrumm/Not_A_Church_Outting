@@ -38,35 +38,52 @@ export function sortPlayersByScore(scorecards, courseHoles = []) {
 
 /**
  * Sort players by COMBINED Fri AM + Sat AM score for Sunday seeding.
- * Tiebreaker: worst hole on Friday's #1 handicap hole, then Saturday's #1, etc.
  *
- * @param {Array} combined     - [{ player_id, player_name, combined_score, friday_holes, saturday_holes }]
- * @param {Array} fridayHoles  - [{ hole_number, handicap_rank }]
+ * Tiebreaker: for each handicap rank 1–18, add the player's score on
+ * Friday's #N handicap hole + Saturday's #N handicap hole. Lower sum wins.
+ * Example: TB#1 = Hemlock hole 7 score + Manistee hole 5 score (both hdcp #1)
+ *
+ * @param {Array} combined      - [{ player_id, player_name, combined_score, friday_holes, saturday_holes }]
+ * @param {Array} fridayHoles   - [{ hole_number, handicap_rank }]
  * @param {Array} saturdayHoles - [{ hole_number, handicap_rank }]
  */
 export function sortCombinedForSunday(combined, fridayHoles = [], saturdayHoles = []) {
-  const friByHcp = [...fridayHoles].sort((a, b) => a.handicap_rank - b.handicap_rank).map(h => h.hole_number)
-  const satByHcp = [...saturdayHoles].sort((a, b) => a.handicap_rank - b.handicap_rank).map(h => h.hole_number)
+  // Build map: handicap_rank -> hole_number for each course
+  const friHoleByRank = {}
+  fridayHoles.forEach(h => { friHoleByRank[h.handicap_rank] = h.hole_number })
+
+  const satHoleByRank = {}
+  saturdayHoles.forEach(h => { satHoleByRank[h.handicap_rank] = h.hole_number })
+
+  const maxRank = Math.max(
+    ...Object.keys(friHoleByRank).map(Number),
+    ...Object.keys(satHoleByRank).map(Number),
+    18
+  )
 
   const sorted = [...combined].sort((a, b) => {
     if (a.combined_score !== b.combined_score) return a.combined_score - b.combined_score
 
-    // Tiebreaker 1: Friday holes in handicap order
     const friA = parseHoles(a.friday_holes)
     const friB = parseHoles(b.friday_holes)
-    for (const holeNum of friByHcp) {
-      const sA = friA[String(holeNum)] ?? 99
-      const sB = friB[String(holeNum)] ?? 99
-      if (sA !== sB) return sA - sB
-    }
-
-    // Tiebreaker 2: Saturday holes in handicap order
     const satA = parseHoles(a.saturday_holes)
     const satB = parseHoles(b.saturday_holes)
-    for (const holeNum of satByHcp) {
-      const sA = satA[String(holeNum)] ?? 99
-      const sB = satB[String(holeNum)] ?? 99
-      if (sA !== sB) return sA - sB
+
+    // Walk handicap ranks 1..18
+    // TB for rank N = (Fri hdcp-N hole score) + (Sat hdcp-N hole score)
+    for (let rank = 1; rank <= maxRank; rank++) {
+      const friHole = friHoleByRank[rank]
+      const satHole = satHoleByRank[rank]
+
+      const friScoreA = friHole ? (friA[String(friHole)] ?? 99) : 0
+      const friScoreB = friHole ? (friB[String(friHole)] ?? 99) : 0
+      const satScoreA = satHole ? (satA[String(satHole)] ?? 99) : 0
+      const satScoreB = satHole ? (satB[String(satHole)] ?? 99) : 0
+
+      const sumA = friScoreA + satScoreA
+      const sumB = friScoreB + satScoreB
+
+      if (sumA !== sumB) return sumA - sumB
     }
 
     return (a.player_name || '').localeCompare(b.player_name || '')
