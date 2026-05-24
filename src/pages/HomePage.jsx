@@ -59,12 +59,21 @@ export default function HomePage() {
           <h1 style={{ lineHeight: 1.1 }}>{event?.name || 'Golf Outing'}</h1>
           {player ? (
             <div style={{ marginTop: 16 }}>
-              <p style={{ color: 'var(--green-bright)', fontSize: '0.9rem', marginBottom: 8 }}>Welcome back, <strong>{player.name}</strong></p>
-              {playerGroup && (
-                <p style={{ color: 'var(--gold)', fontSize: '0.8rem', fontFamily: 'var(--font-mono)', marginBottom: 8 }}>
-                  Group {playerGroup.group_number} · {(playerGroup.players||[]).map(p=>p.name).join(', ')}
-                </p>
-              )}
+              <p style={{ color: 'var(--green-bright)', fontSize: '0.9rem', marginBottom: 6 }}>Welcome back, <strong>{player.name}</strong></p>
+              {playerGroup && (() => {
+                const members = (playerGroup.players || []).map(p => p.name)
+                const row1 = members.slice(0, 2).join(', ')
+                const row2 = members.slice(2, 4).join(', ')
+                return (
+                  <div style={{ marginBottom: 10 }}>
+                    <p style={{ color: 'var(--gold)', fontSize: '0.8rem', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                      Group {playerGroup.group_number}
+                    </p>
+                    <p style={{ color: 'var(--gray-300)', fontSize: '0.8rem' }}>{row1}</p>
+                    {row2 && <p style={{ color: 'var(--gray-300)', fontSize: '0.8rem' }}>{row2}</p>}
+                  </div>
+                )
+              })()}
               <button className="btn btn-ghost btn-sm" onClick={signOutPlayer}>Sign Out</button>
             </div>
           ) : !isCommissioner && (
@@ -111,14 +120,16 @@ export default function HomePage() {
                 {/* Weekend schedule */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
                   {[
-                    { label: 'Friday', course: event.friday_course_name, amTime: event.friday_tee_time, pmTime: event.friday_afternoon_tee_time },
-                    { label: 'Saturday', course: event.saturday_course_name, amTime: event.saturday_tee_time, pmTime: event.saturday_afternoon_tee_time },
-                    { label: 'Sunday', course: event.sunday_course_name, amTime: event.sunday_tee_time, pmTime: null },
-                  ].map(({ label, course, amTime, pmTime }) => (
-                    <div key={label} className="card card-sm" style={{ background: 'var(--green-deep)', margin: 0, padding: '10px 12px' }}>
-                      <div className="text-xs text-muted" style={{ marginBottom: 2 }}>{label}</div>
-                      <div className="text-xs" style={{ fontWeight: 500, lineHeight: 1.3 }}>{course || <span className="text-muted">TBD</span>}</div>
-                      {amTime && <div className="text-xs text-mono text-muted" style={{ marginTop: 2 }}>{formatTime(amTime)}</div>}
+                    { label: 'Friday', course: event.friday_course_name, amTime: event.friday_tee_time },
+                    { label: 'Saturday', course: event.saturday_course_name, amTime: event.saturday_tee_time },
+                    { label: 'Sunday', course: event.sunday_course_name, amTime: event.sunday_tee_time },
+                  ].map(({ label, course, amTime }) => (
+                    <div key={label} style={{ background: 'var(--green-deep)', borderRadius: 'var(--radius)', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 72 }}>
+                      <div>
+                        <div className="text-xs text-muted" style={{ marginBottom: 3 }}>{label}</div>
+                        <div className="text-xs" style={{ fontWeight: 500, lineHeight: 1.3 }}>{course || <span className="text-muted">TBD</span>}</div>
+                      </div>
+                      <div className="text-xs text-mono text-muted" style={{ marginTop: 4 }}>{amTime ? formatTime(amTime) : ''}</div>
                     </div>
                   ))}
                 </div>

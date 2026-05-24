@@ -268,7 +268,12 @@ function MiniView({ standings, par, currentPlayer }) {
 
 // ── DETAIL VIEW ───────────────────────────────────────────────────────────────
 function DetailView({ standings, holes, par, currentPlayer }) {
-  const sortedHoles = [...holes].sort((a, b) => a.hole_number - b.hole_number)
+  // Always show 18 holes — fill in missing with par 4 placeholder
+  const allHoles = Array.from({ length: 18 }, (_, i) => {
+    const found = holes.find(h => h.hole_number === i + 1)
+    return found || { hole_number: i + 1, par: 4, handicap_rank: i + 1 }
+  })
+  const sortedHoles = allHoles
 
   function holeClass(score, holePar) {
     if (!score || !holePar) return 'empty'
@@ -299,7 +304,7 @@ function DetailView({ standings, holes, par, currentPlayer }) {
         <table style={{ borderCollapse: 'separate', borderSpacing: 0, whiteSpace: 'nowrap', fontSize: '0.75rem', minWidth: '100%' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--green-mid)' }}>
-              <th style={{ position: 'sticky', left: 0, background: 'var(--green-deep)', zIndex: 3, padding: '5px 12px', textAlign: 'left', fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--gray-500)', fontWeight: 500, minWidth: 100, borderRight: '1px solid var(--green-mid)' }}>
+              <th style={{ position: 'sticky', left: 0, background: 'var(--green-deep)', zIndex: 3, padding: '5px 8px', textAlign: 'left', fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--gray-500)', fontWeight: 500, minWidth: 80, borderRight: '1px solid var(--green-mid)' }}>
                 Player
               </th>
               {sortedHoles.map(h => (
@@ -338,10 +343,10 @@ function DetailView({ standings, holes, par, currentPlayer }) {
                   <td style={{
                     position: 'sticky', left: 0, zIndex: 2,
                     background: stickyBg,
-                    padding: '7px 12px', fontFamily: 'var(--font-body)', fontSize: '0.8rem',
+                    padding: '6px 8px', fontFamily: 'var(--font-body)', fontSize: '0.75rem',
                     fontWeight: 500, color: isMe ? 'var(--gold)' : 'var(--cream)',
                     borderBottom: '1px solid var(--green-mid)',
-                    borderRight: '1px solid var(--green-mid)', minWidth: 100,
+                    borderRight: '1px solid var(--green-mid)', minWidth: 80,
                   }}>
                     {fmtName(sc.player_name)}
                   </td>
