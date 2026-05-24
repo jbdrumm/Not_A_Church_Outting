@@ -78,16 +78,17 @@ export default function ScorecardPage() {
     })
   }
 
-  const saveProgress = async (silent = false) => {
+  const saveProgress = async (silent = false, overrideScores = null) => {
     if (!event || groupPlayers.length === 0) return
     const roundInfo = getActiveRound(event.status)
     const day = roundInfo?.round?.split('_')[0]
     const course = getCourseForRound(event, day)
     if (!course?.id) return
 
+    const src = overrideScores || scores
     for (const member of groupPlayers) {
       const holeScores = {}
-      Object.entries(scores[member.player_id] || {}).forEach(([k, v]) => { if (v) holeScores[k] = parseInt(v) })
+      Object.entries(src[member.player_id] || {}).forEach(([k, v]) => { if (v) holeScores[k] = parseInt(v) })
       const holesCompleted = Object.keys(holeScores).length
       if (holesCompleted === 0) continue
       const total = calculateTotal(holeScores)
@@ -103,8 +104,18 @@ export default function ScorecardPage() {
 
   const handleNextHole = async () => {
     setSaving(true)
-    await saveProgress(true)
+    // Build committed scores: merge current hole's displayed value (incl default 4)
+    // into each player's score map before saving — bypasses async state flush issue
+    const committed = {}
+    groupPlayers.forEach(member => {
+      const existing = scores[member.player_id] || {}
+      const holeVal = existing[String(currentHole)] ?? 4
+      committed[member.player_id] = { ...existing, [String(currentHole)]: holeVal }
+    })
+    await saveProgress(true, committed)
     setSaving(false)
+    // Update local state too so summary reflects it
+    setScores(committed)
     setCurrentHole(h => Math.min(18, h + 1))
   }
 
