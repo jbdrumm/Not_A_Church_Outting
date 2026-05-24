@@ -436,3 +436,45 @@ ON CONFLICT (course_id, hole_number) DO UPDATE SET
 -- Evergreen Resort:   ✅ ALL 18 confirmed (GolfNow screenshot)
 -- Lakewood on Green:  ❌ No hole data — scorecard "coming soon" per website
 -- ================================================================
+
+
+-- ================================================================
+-- LAKEWOOD ON THE GREEN — NOW FULLY CONFIRMED
+-- Source: GolfNow screenshot
+-- Par 70 (front 35, back 35), Rating 70.3, Slope 136
+-- Note: no White tee row in screenshot — Blue used as yardage_blue,
+--       Black used as yardage_black. White tees not available.
+-- ================================================================
+WITH course AS (SELECT id FROM courses WHERE name = 'Lakewood On The Green')
+INSERT INTO course_holes (course_id, hole_number, par, handicap_rank,
+                          yardage_blue, yardage_black)
+SELECT course.id, h.hole_number, h.par, h.handicap_rank, h.blue, h.black
+FROM course, (VALUES
+-- Hole  Par  Hdcp  Blue   Black
+  (1,   4,  16,  327,  338),
+  (2,   4,   4,  369,  402),
+  (3,   5,   9,  505,  515),
+  (4,   4,  12,  338,  359),
+  (5,   4,   2,  382,  395),
+  (6,   3,  18,  151,  167),
+  (7,   4,   3,  378,  399),
+  (8,   3,  14,  155,  180),
+  (9,   4,   5,  370,  390),
+  (10,  4,   6,  344,  356),
+  (11,  4,   7,  376,  385),
+  (12,  3,  10,  127,  137),
+  (13,  4,   8,  404,  416),
+  (14,  5,  15,  475,  483),
+  (15,  4,   1,  370,  382),
+  (16,  4,  13,  326,  337),
+  (17,  3,  17,  130,  136),
+  (18,  4,  11,  300,  308)
+) AS h(hole_number, par, handicap_rank, blue, black)
+ON CONFLICT (course_id, hole_number) DO UPDATE SET
+  par = EXCLUDED.par, handicap_rank = EXCLUDED.handicap_rank,
+  yardage_blue  = EXCLUDED.yardage_blue,
+  yardage_black = EXCLUDED.yardage_black;
+
+-- ================================================================
+-- ALL 8 COURSES COMPLETE ✅
+-- ================================================================
