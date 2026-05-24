@@ -7,8 +7,7 @@ UPDATE courses SET slope_rating = 137,  course_rating = 72.8, par = 72
   WHERE name = 'El Dorado Golf Club';
 UPDATE courses SET slope_rating = 130,  course_rating = 72.6, par = 72
   WHERE name = 'Emerald Vale Golf Course';
-UPDATE courses SET slope_rating = 113,  course_rating = 70.0, par = 71
-  WHERE name = 'Hemlock Golf Club';
+-- Hemlock ratings/par now set in hole section below
 
 -- Rename + fix Lakewood (it's Lakewood ON THE GREEN in Cadillac, par 70)
 UPDATE courses SET
@@ -289,42 +288,43 @@ ON CONFLICT (course_id, hole_number) DO UPDATE SET
 
 -- ================================================================
 -- HEMLOCK GOLF CLUB — FULLY CONFIRMED
--- Source: Scorecard image (confirmed hole 5=par3, hole 6=par5)
--- Par 71 (front 35, back 36)
+-- Source: GolfNow actual scorecard screenshot
+-- Par 72 (front 36, back 36), Black 6901 yds, Rating 73.5, Slope 139
+-- Blue 6162 yds (69.9/130), White 4763 yds (63.3/111)
 -- All pars and handicap ranks confirmed
--- Tees: Black / Green / Blue / White(plates) / Gold(plates)
--- Using Blue as yardage_blue, Black as yardage_black
--- White(plates) tees are a short forward tee — not used as primary
 -- ================================================================
-UPDATE courses SET par = 71 WHERE name = 'Hemlock Golf Club';
+UPDATE courses SET par = 72, slope_rating = 139, course_rating = 73.5
+  WHERE name = 'Hemlock Golf Club';
 
 WITH course AS (SELECT id FROM courses WHERE name = 'Hemlock Golf Club')
 INSERT INTO course_holes (course_id, hole_number, par, handicap_rank,
-                          yardage_blue, yardage_black)
-SELECT course.id, h.hole_number, h.par, h.handicap_rank, h.blue, h.black
+                          yardage_white, yardage_blue, yardage_black)
+SELECT course.id, h.hole_number, h.par, h.handicap_rank,
+       h.white, h.blue, h.black
 FROM course, (VALUES
--- Hole  Par  Hdcp  Blue   Black
-  (1,   4,   8,  388,  432),
-  (2,   4,  16,  298,  330),
-  (3,   4,  12,  262,  302),
-  (4,   3,  14,  301,  363),
-  (5,   3,  18,  156,  184),  -- confirmed par 3
-  (6,   5,   6,  518,  558),  -- confirmed par 5 (518 blue yds)
-  (7,   4,   2,  412,  475),
-  (8,   4,  10,  370,  420),
-  (9,   4,   4,  386,  424),
-  (10,  4,   7,  399,  493),
-  (11,  5,   3,  469,  511),
-  (12,  4,   1,  505,  580),
-  (13,  3,  15,  154,  198),
-  (14,  4,   9,  329,  341),
-  (15,  4,  17,  368,  402),
-  (16,  4,  13,  372,  404),
-  (17,  3,  11,  372,  401),
-  (18,  5,   5,  306,  401)
-) AS h(hole_number, par, handicap_rank, blue, black)
+-- Hole  Par  Hdcp  White  Blue   Black
+  (1,   4,   3,  311,  382,  427),
+  (2,   4,  17,  232,  299,  328),
+  (3,   4,  15,  197,  263,  298),
+  (4,   4,   9,  227,  298,  360),
+  (5,   3,  11,  134,  158,  178),
+  (6,   5,   5,  393,  526,  552),
+  (7,   4,   1,  289,  409,  469),
+  (8,   4,  13,  279,  371,  416),
+  (9,   4,   7,  309,  386,  432),
+  (10,  4,  10,  306,  395,  428),
+  (11,  5,   4,  356,  447,  502),
+  (12,  5,   2,  432,  506,  585),
+  (13,  3,  16,  106,  156,  192),
+  (14,  4,   6,  268,  324,  356),
+  (15,  3,  18,  100,  138,  158),
+  (16,  4,   8,  235,  365,  404),
+  (17,  4,  14,  289,  369,  413),
+  (18,  4,  12,  300,  370,  403)
+) AS h(hole_number, par, handicap_rank, white, blue, black)
 ON CONFLICT (course_id, hole_number) DO UPDATE SET
   par = EXCLUDED.par, handicap_rank = EXCLUDED.handicap_rank,
+  yardage_white = EXCLUDED.yardage_white,
   yardage_blue  = EXCLUDED.yardage_blue,
   yardage_black = EXCLUDED.yardage_black;
 
