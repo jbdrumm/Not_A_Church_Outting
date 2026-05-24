@@ -1,172 +1,352 @@
 import { useState, useEffect, useCallback } from 'react'
 import { db } from '../lib/db'
-import { sortPlayersByScore, sortCombinedForSunday, scoreVsPar, ROUNDS, getActiveRound, getCourseForRound } from '../lib/golf'
+import { sortPlayersByScore, scoreVsPar, getActiveRound, getCourseForRound } from '../lib/golf'
 
 const REFRESH = 120000
 
+function calcTeeTime(baseTee, groupNumber) {
+  if (!baseTee) return null
+  const [h, m] = baseTee.split(':').map(Number)
+  const total = h * 60 + m + (groupNumber - 1) * 8
+  const nh = Math.floor(total / 60) % 24
+  const nm = total % 60
+  const hour = nh % 12 || 12
+  return `${hour}:${String(nm).padStart(2,'0')} ${nh >= 12 ? 'PM' : 'AM'}`
+}
+
+function fmtName(playerName) {
+  if (!playerName) return '–'
+  const parts = playerName.trim().split(' ')
+  if (parts.length === 1) return parts[0]
+  return `${parts[0]} ${parts[parts.length - 1][0]}.`
+}
+
+function fmtVsPar(total, par) {
+  if (!total || !par) return { txt: '–', cls: '' }
+  const d = total - par
+  if (d === 0) return { txt: 'E', cls: 'score-even' }
+  if (d < 0)   return { txt: String(d), cls: 'score-under' }
+  return { txt: `+${d}`, cls: 'score-over' }
+}
+
 export default function LeaderboardPage() {
   const [event, setEvent] = useState(null)
-  const [selectedRound, setSelectedRound] = useState(null)
   const [standings, setStandings] = useState([])
   const [holes, setHoles] = useState([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [view, setView] = useState('mini') // 'mini' | 'detail'
+  const [currentPlayer] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('golf_player')) } catch { return null }
+  })
 
-  const fetchData = useCallback(async (round = selectedRound) => {
+  const fetchData = useCallback(async () => {
     const { data: ev } = await db('get_current_event')
     if (!ev) { setLoading(false); return }
     setEvent(ev)
 
-    // Default to the active round
-    const activeRoundInfo = getActiveRound(ev.status)
-    const targetRound = round || activeRoundInfo?.round
-    if (!targetRound || targetRound === null) { setLoading(false); return }
-
-    // Parse day and time
-    const [day, time] = targetRound.split('_')  // e.g. 'friday_morning'
-    const round_time = targetRound.includes('afternoon') ? 'afternoon' : 'morning'
-
-    // Sunday combined view
-    if (targetRound === 'sunday_combined') {
-      const { data: combined } = await db('get_combined_totals', { event_id: ev.id })
-      const friHoles = await getHoles(ev.friday_course_id)
-      const satHoles = await getHoles(ev.saturday_course_id)
-      const sorted = sortCombinedForSunday(combined || [], friHoles, satHoles)
-      setStandings(sorted.map(p => ({ ...p, total_score: p.combined_score })))
-      setHoles([])
-    } else {
-      const course = getCourseForRound(ev, day)
-      if (course?.id) {
-        const { data: h } = await db('get_course_holes', { course_id: course.id })
-        setHoles(h || [])
-      }
-      const { data: scores } = await db('get_round_scores', { event_id: ev.id, day, round_time })
-      const withScores = (scores || [])
-        .filter(sc => sc.total_score > 0 || sc.holes_completed > 0)
-        .map(sc => ({
-          ...sc,
-          hole_scores: typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : sc.hole_scores || {},
-        }))
-      const sorted = sortPlayersByScore(withScores, holes)
-      setStandings(sorted)
+    const roundInfo = getActiveRound(ev.status)
+    if (!roundInfo?.round || roundInfo.round.includes('afternoon') || roundInfo.round === 'sunday_morning') {
+      setLoading(false); return
     }
 
+    const day = roundInfo.round.split('_')[0]
+    const course = getCourseForRound(ev, day)
+
+    const [holesRes, scoresRes] = await Promise.all([
+      course?.id ? db('get_course_holes', { course_id: course.id }) : Promise.resolve({ data: [] }),
+      db('get_round_scores', { event_id: ev.id, day, round_time: 'morning' }),
+    ])
+
+    const courseHoles = holesRes.data || []
+    setHoles(courseHoles)
+
+    const withScores = (scoresRes.data || [])
+      .filter(sc => (sc.total_score > 0) || (sc.holes_completed > 0))
+      .map(sc => ({
+        ...sc,
+        hole_scores: typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : (sc.hole_scores || {}),
+      }))
+
+    setStandings(sortPlayersByScore(withScores, courseHoles))
     setLastUpdated(new Date())
     setLoading(false)
-  }, [selectedRound, holes])
+  }, [])
 
-  const getHoles = async (courseId) => {
-    if (!courseId) return []
-    const { data } = await db('get_course_holes', { course_id: courseId })
-    return data || []
-  }
-
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData() }, [fetchData])
   useEffect(() => {
-    const interval = setInterval(() => { fetchData(); setRefreshKey(k => k + 1) }, REFRESH)
-    return () => clearInterval(interval)
+    const iv = setInterval(() => { fetchData(); setRefreshKey(k => k + 1) }, REFRESH)
+    return () => clearInterval(iv)
   }, [fetchData])
 
-  const handleRoundSelect = (r) => {
-    setSelectedRound(r)
-    setLoading(true)
-    fetchData(r)
-  }
+  const roundInfo = event ? getActiveRound(event.status) : null
+  const day = roundInfo?.round?.split('_')[0]
+  const course = event && day ? getCourseForRound(event, day) : null
+  const par = course?.par
+  const fmtTime = d => d?.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) || ''
 
-  const activeRoundInfo = event ? getActiveRound(event.status) : null
-  const currentRoundKey = selectedRound || activeRoundInfo?.round
-
-  // Build available rounds for tab switching
-  const availableRounds = [
-    ...ROUNDS.filter(r => !r.is_scramble).map(r => ({ key: `${r.day}_${r.round_time}`, label: r.label })),
-    { key: 'sunday_combined', label: 'Sun Seeding (Combined)' },
-  ]
-
-  const isScrambleRound = currentRoundKey?.includes('afternoon')
-  const activeCourse = event && currentRoundKey && !currentRoundKey.includes('combined')
-    ? getCourseForRound(event, currentRoundKey.split('_')[0])
-    : null
-
-  const fmtTime = (d) => d?.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) || ''
+  const notStarted = [] // players assigned to event but thru 0 — we'll show them below
 
   return (
-    <div className="page">
+    <div className="page" style={{ paddingBottom: 80 }}>
       <div className="refresh-bar"><div className="refresh-bar-fill" key={refreshKey} /></div>
-      <div className="container">
-        <div className="page-header">
-          <div className="eyebrow">Live Scores</div>
-          <div className="flex justify-between items-center">
-            <h1>Leaderboard</h1>
-            {event?.scores_locked && <span className="badge badge-gold">Final</span>}
-          </div>
-          {activeCourse?.name && <p className="text-muted text-sm" style={{ marginTop: 4 }}>{activeCourse.name}{activeCourse.par ? ` · Par ${activeCourse.par}` : ''}</p>}
-          {lastUpdated && <p className="text-xs text-muted" style={{ marginTop: 4, fontFamily: 'var(--font-mono)' }}>Updated {fmtTime(lastUpdated)} · auto-refreshes every 2 min</p>}
-        </div>
 
-        {/* Round tabs */}
-        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', marginBottom: 16, paddingBottom: 4 }}>
-          {availableRounds.map(r => (
-            <button key={r.key} onClick={() => handleRoundSelect(r.key)}
-              style={{
-                padding: '7px 12px', border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer',
-                background: currentRoundKey === r.key ? 'var(--gold)' : 'var(--green-dark)',
-                color: currentRoundKey === r.key ? 'var(--green-deep)' : 'var(--gray-300)',
-                fontFamily: 'var(--font-body)', fontSize: '0.75rem', fontWeight: currentRoundKey === r.key ? 600 : 400,
-                whiteSpace: 'nowrap', flexShrink: 0,
-              }}>
-              {r.label}
-            </button>
-          ))}
+      <div style={{ padding: '20px 16px 10px', borderBottom: '1px solid var(--green-mid)' }}>
+        <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gold)', marginBottom: 2 }}>
+          {roundInfo?.label || 'Morning Round'}
+        </p>
+        <div className="flex justify-between items-center">
+          <h1 style={{ fontSize: '1.6rem' }}>Leaderboard</h1>
+          {event?.scores_locked && <span className="badge badge-gold">Final</span>}
         </div>
+        {course?.name && (
+          <p className="text-muted text-sm" style={{ marginTop: 2 }}>
+            {course.name}{par ? ` · Par ${par}` : ''}
+          </p>
+        )}
+        {lastUpdated && (
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--gray-500)', marginTop: 3 }}>
+            Updated {fmtTime(lastUpdated)} · auto-refreshes every 2 min
+          </p>
+        )}
+      </div>
 
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 48 }}><div className="spinner" style={{ margin: '0 auto 12px' }} /><p className="text-muted text-sm">Loading scores...</p></div>
-        ) : standings.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: 40 }}>
-            <p style={{ fontSize: '2rem', marginBottom: 8 }}>⛳</p>
-            <p className="text-muted">No scores yet for this round.</p>
+      {/* Mini / Detail toggle */}
+      <div style={{ display: 'flex', gap: 4, padding: '10px 12px' }}>
+        {['mini', 'detail'].map(v => (
+          <button key={v} onClick={() => setView(v)} style={{
+            flex: 1, padding: '8px', border: '1px solid var(--green-mid)',
+            borderRadius: 'var(--radius)', fontSize: '0.85rem', fontWeight: 500,
+            cursor: 'pointer', fontFamily: 'var(--font-body)',
+            background: view === v ? 'var(--green-mid)' : 'transparent',
+            color: view === v ? 'var(--cream)' : 'var(--gray-500)',
+          }}>
+            {v === 'mini' ? 'Mini' : 'Detail'}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 48 }}>
+          <div className="spinner" style={{ margin: '0 auto 12px' }} />
+          <p className="text-muted text-sm">Loading scores...</p>
+        </div>
+      ) : standings.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 48 }}>
+          <p style={{ fontSize: '2rem', marginBottom: 8 }}>⛳</p>
+          <p className="text-muted text-sm">No scores yet for this round.</p>
+        </div>
+      ) : view === 'mini' ? (
+        <MiniView standings={standings} par={par} currentPlayer={currentPlayer} />
+      ) : (
+        <DetailView standings={standings} holes={holes} par={par} currentPlayer={currentPlayer} />
+      )}
+    </div>
+  )
+}
+
+// ── MINI VIEW ────────────────────────────────────────────────────────────────
+function MiniView({ standings, par, currentPlayer }) {
+  return (
+    <div>
+      {/* Header row */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '32px 1fr 52px 40px',
+        padding: '4px 16px', borderBottom: '1px solid var(--green-mid)',
+      }}>
+        {['#', 'Player', 'Score', 'Thru'].map((h, i) => (
+          <span key={h} style={{
+            fontSize: '0.65rem', color: 'var(--gray-500)', fontWeight: 500,
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+            fontFamily: 'var(--font-mono)',
+            textAlign: i >= 2 ? 'right' : 'left',
+          }}>{h}</span>
+        ))}
+      </div>
+
+      {standings.map((sc, idx) => {
+        const isMe = currentPlayer?.id === sc.player_id
+        const { txt, cls } = fmtVsPar(sc.total_score, par)
+        const holesIn = sc.holes_completed || Object.keys(sc.hole_scores || {}).length
+        const thruTxt = sc.is_complete || holesIn >= 18 ? 'F' : String(holesIn)
+        const showPos = !sc.is_tied
+
+        return (
+          <div key={sc.player_id || idx} style={{
+            display: 'grid', gridTemplateColumns: '32px 1fr 52px 40px',
+            alignItems: 'center', padding: '0 16px',
+            borderBottom: '1px solid var(--green-mid)',
+            minHeight: 40,
+            background: isMe ? 'rgba(201,168,76,0.08)' : 'transparent',
+            borderLeft: isMe ? '2px solid var(--gold)' : '2px solid transparent',
+          }}>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 500,
+              color: isMe ? 'var(--gold)' : 'var(--gray-500)',
+            }}>
+              {showPos ? sc.finishing_position : ''}
+            </span>
+            <span style={{ fontSize: '0.875rem' }}>
+              <span style={{ fontWeight: 500, color: isMe ? 'var(--gold)' : 'var(--cream)' }}>
+                {fmtName(sc.player_name)}
+              </span>
+            </span>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.95rem', fontWeight: 500,
+              textAlign: 'right',
+              color: cls === 'score-under' ? 'var(--blue-birdie)' : cls === 'score-over' ? 'var(--red)' : 'var(--gray-300)',
+            }}>{txt}</span>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+              textAlign: 'right',
+              color: thruTxt === 'F' ? 'var(--green-bright)' : 'var(--gray-500)',
+              fontWeight: thruTxt === 'F' ? 600 : 400,
+            }}>{thruTxt}</span>
           </div>
-        ) : (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr 60px 60px', gap: 8, padding: '10px 16px', borderBottom: '1px solid var(--green-mid)', background: 'var(--green-deep)' }}>
-              {['#','Player','Score','+/–'].map(h => <span key={h} className="text-xs text-muted" style={{ textAlign: h==='Score'||h==='+/–' ? 'right' : 'left' }}>{h}</span>)}
-            </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── DETAIL VIEW ───────────────────────────────────────────────────────────────
+function DetailView({ standings, holes, par, currentPlayer }) {
+  const sortedHoles = [...holes].sort((a, b) => a.hole_number - b.hole_number)
+
+  function holeClass(score, holePar) {
+    if (!score || !holePar) return 'empty'
+    const d = score - holePar
+    if (d <= -2) return 'eagle'
+    if (d === -1) return 'birdie'
+    if (d === 0)  return 'par'
+    if (d === 1)  return 'bogey'
+    return 'double'
+  }
+
+  const holeStyle = {
+    eagle:  { background: 'var(--yellow-eagle)', color: 'var(--green-deep)', borderRadius: '50%' },
+    birdie: { border: '1.5px solid var(--blue-birdie)', color: 'var(--blue-birdie)', borderRadius: '50%' },
+    par:    { color: 'var(--gray-300)' },
+    bogey:  { border: '1.5px solid var(--red)', borderRadius: 2, color: 'var(--cream)' },
+    double: { background: 'var(--red)', borderRadius: 2, color: 'white' },
+    empty:  { color: 'var(--gray-700)', opacity: 0.5 },
+  }
+
+  return (
+    <div>
+      <p style={{ padding: '4px 16px', fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--gray-500)', textAlign: 'center', borderBottom: '1px solid var(--green-mid)' }}>
+        ← swipe to see all holes →
+      </p>
+
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 0, whiteSpace: 'nowrap', fontSize: '0.75rem', minWidth: '100%' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--green-mid)' }}>
+              <th style={{ position: 'sticky', left: 0, background: 'var(--green-deep)', zIndex: 3, padding: '5px 12px', textAlign: 'left', fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--gray-500)', fontWeight: 500, minWidth: 100, borderRight: '1px solid var(--green-mid)' }}>
+                Player
+              </th>
+              {sortedHoles.map(h => (
+                <th key={h.hole_number} style={{
+                  padding: '5px 4px', textAlign: 'center', fontFamily: 'var(--font-mono)',
+                  fontSize: '0.65rem', color: 'var(--gray-500)', fontWeight: 500, width: 28,
+                  background: 'var(--green-deep)',
+                  borderLeft: h.hole_number === 10 ? '2px solid var(--green-mid)' : 'none',
+                }}>
+                  {h.hole_number}
+                </th>
+              ))}
+              {['Tot', '+/–', 'Thru'].map((h, i) => (
+                <th key={h} style={{
+                  padding: '5px 6px', textAlign: 'right', fontFamily: 'var(--font-mono)',
+                  fontSize: '0.65rem', color: 'var(--gray-500)', fontWeight: 500,
+                  background: 'var(--green-deep)',
+                  borderLeft: i === 0 ? '2px solid var(--green-mid)' : 'none',
+                  minWidth: h === 'Thru' ? 34 : 42,
+                }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
             {standings.map((sc, idx) => {
-              const pos = sc.finishing_position || sc.seed_position
-              const par = activeCourse?.par
-              const diff = par ? scoreVsPar(sc.total_score, par) : null
-              const holesIn = sc.holes_completed || Object.keys(sc.hole_scores || {}).length
+              const isMe = currentPlayer?.id === sc.player_id
+              const holeScores = typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : (sc.hole_scores || {})
+              const { txt, cls } = fmtVsPar(sc.total_score, par)
+              const holesIn = sc.holes_completed || Object.keys(holeScores).length
+              const thruTxt = sc.is_complete || holesIn >= 18 ? 'F' : String(holesIn)
+              const rowBg = isMe ? 'rgba(201,168,76,0.08)' : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'
+              const stickyBg = isMe ? 'rgba(201,168,76,0.12)' : idx % 2 === 0 ? 'var(--green-deep)' : 'var(--green-dark)'
+
               return (
-                <div key={sc.player_id || idx} className="leaderboard-row" style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                  <span className={`position${pos <= 3 ? ' top3' : ''}`}>
-                    {pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : pos}
-                  </span>
-                  <div>
-                    <span style={{ fontWeight: 500 }}>{sc.player_name}</span>
-                    {!sc.is_complete && holesIn > 0 && <span className="text-xs text-muted" style={{ marginLeft: 6, fontFamily: 'var(--font-mono)' }}>thru {holesIn}</span>}
-                    {sc.is_complete && <span className="text-xs" style={{ marginLeft: 6, color: 'var(--green-bright)', fontFamily: 'var(--font-mono)' }}>F</span>}
-                    {sc.rounds_complete !== undefined && <span className="text-xs text-muted" style={{ marginLeft: 6, fontFamily: 'var(--font-mono)' }}>{sc.rounds_complete}/2 rounds</span>}
-                  </div>
-                  <span className="text-mono" style={{ textAlign: 'right', fontSize: '1.1rem', fontWeight: 700 }}>{sc.total_score || sc.combined_score}</span>
-                  <span className="text-mono text-sm" style={{ textAlign: 'right', color: diff?.startsWith('+') ? 'var(--red)' : diff === 'E' ? 'var(--cream)' : 'var(--blue-birdie)' }}>{diff || '–'}</span>
-                </div>
+                <tr key={sc.player_id || idx}>
+                  <td style={{
+                    position: 'sticky', left: 0, zIndex: 2,
+                    background: stickyBg,
+                    padding: '7px 12px', fontFamily: 'var(--font-body)', fontSize: '0.8rem',
+                    fontWeight: 500, color: isMe ? 'var(--gold)' : 'var(--cream)',
+                    borderBottom: '1px solid var(--green-mid)',
+                    borderRight: '1px solid var(--green-mid)', minWidth: 100,
+                  }}>
+                    {fmtName(sc.player_name)}
+                  </td>
+                  {sortedHoles.map(h => {
+                    const s = holeScores[String(h.hole_number)]
+                    const hcls = holeClass(s, h.par)
+                    const st = holeStyle[hcls] || {}
+                    return (
+                      <td key={h.hole_number} style={{
+                        padding: '4px 3px', textAlign: 'center',
+                        background: rowBg, borderBottom: '1px solid var(--green-mid)',
+                        borderLeft: h.hole_number === 10 ? '2px solid var(--green-mid)' : 'none',
+                      }}>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 22, height: 22, fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 500,
+                          ...st
+                        }}>
+                          {s != null ? s : '·'}
+                        </span>
+                      </td>
+                    )
+                  })}
+                  <td style={{ padding: '7px 6px', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 500, textAlign: 'right', background: rowBg, borderBottom: '1px solid var(--green-mid)', borderLeft: '2px solid var(--green-mid)' }}>
+                    {sc.total_score || '–'}
+                  </td>
+                  <td style={{
+                    padding: '7px 6px', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 500, textAlign: 'right',
+                    background: rowBg, borderBottom: '1px solid var(--green-mid)',
+                    color: cls === 'score-under' ? 'var(--blue-birdie)' : cls === 'score-over' ? 'var(--red)' : 'var(--gray-300)',
+                  }}>{txt}</td>
+                  <td style={{
+                    padding: '7px 6px', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', textAlign: 'right',
+                    background: rowBg, borderBottom: '1px solid var(--green-mid)',
+                    color: thruTxt === 'F' ? 'var(--green-bright)' : 'var(--gray-500)',
+                    fontWeight: thruTxt === 'F' ? 600 : 400,
+                  }}>{thruTxt}</td>
+                </tr>
               )
             })}
-          </div>
-        )}
+          </tbody>
+        </table>
+      </div>
 
-        <div className="card card-sm" style={{ marginTop: 8 }}>
-          <p className="text-xs text-muted" style={{ marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: 'var(--font-mono)' }}>Score Key</p>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {[['eagle','–2'],['birdie','–1'],['par','E'],['bogey','+1'],['double','+2']].map(([cls, label]) => (
-              <div key={cls} className="flex items-center gap-2">
-                <div className={`score-cell ${cls}`} style={{ width: 24, height: 24, fontSize: '0.65rem' }}>•</div>
-                <span className="text-xs text-muted">{label}</span>
-              </div>
-            ))}
+      {/* Score key */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '8px 12px', borderTop: '1px solid var(--green-mid)', alignItems: 'center', marginTop: 4 }}>
+        <span style={{ fontSize: '0.65rem', color: 'var(--gray-500)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 2 }}>Key:</span>
+        {[
+          ['eagle',  { background: 'var(--yellow-eagle)', borderRadius: '50%', color: 'var(--green-deep)' }, '–2'],
+          ['birdie', { border: '1.5px solid var(--blue-birdie)', borderRadius: '50%', color: 'var(--blue-birdie)' }, '–1'],
+          ['par',    { color: 'var(--gray-300)' }, 'E'],
+          ['bogey',  { border: '1.5px solid var(--red)', borderRadius: 2, color: 'var(--cream)' }, '+1'],
+          ['double', { background: 'var(--red)', borderRadius: 2, color: 'white' }, '+2'],
+        ].map(([label, st, score]) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, fontSize: '0.65rem', fontWeight: 500, fontFamily: 'var(--font-mono)', ...st }}>
+              {score}
+            </span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--gray-500)' }}>{label}</span>
           </div>
-        </div>
+        ))}
       </div>
     </div>
   )

@@ -22,18 +22,43 @@ export function sortPlayersByScore(scorecards, courseHoles = []) {
     .map(h => h.hole_number)
 
   const sorted = [...scorecards].sort((a, b) => {
+    // Primary: total score (lower is better)
     if (a.total_score !== b.total_score) return a.total_score - b.total_score
 
-    // Tiebreaker: walk holes in handicap difficulty order
+    // Tiebreaker 1: finished rounds rank above in-progress
+    const aFin = a.is_complete || a.holes_completed >= 18
+    const bFin = b.is_complete || b.holes_completed >= 18
+    if (aFin && !bFin) return -1
+    if (bFin && !aFin) return 1
+
+    // Tiebreaker 2: among in-progress, more holes played ranks higher
+    // (closer to finishing = less volatile = awarded higher position)
+    const aHoles = a.holes_completed || Object.keys(a.hole_scores || {}).length
+    const bHoles = b.holes_completed || Object.keys(b.hole_scores || {}).length
+    if (!aFin && !bFin && aHoles !== bHoles) return bHoles - aHoles
+
+    // Tiebreaker 3: handicap hole order (for final locked standings)
     for (const holeNum of holesByHandicap) {
       const scoreA = a.hole_scores?.[String(holeNum)] ?? 99
       const scoreB = b.hole_scores?.[String(holeNum)] ?? 99
       if (scoreA !== scoreB) return scoreA - scoreB
     }
+
+    // Last resort: alphabetical
     return (a.player_name || '').localeCompare(b.player_name || '')
   })
 
-  return sorted.map((sc, idx) => ({ ...sc, finishing_position: idx + 1 }))
+  // Assign positions — tied players (same score) share the first position number
+  // Position number only meaningful on the first player in a tied group
+  let pos = 1
+  return sorted.map((sc, idx) => {
+    if (idx > 0 && sorted[idx - 1].total_score === sc.total_score) {
+      return { ...sc, finishing_position: sorted[idx - 1].finishing_position, is_tied: true }
+    }
+    const result = { ...sc, finishing_position: pos, is_tied: false }
+    pos = idx + 2
+    return result
+  })
 }
 
 /**
