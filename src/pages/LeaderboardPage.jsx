@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { db } from '../lib/db'
 import { sortPlayersByScore, scoreVsPar, getActiveRound, getCourseForRound } from '../lib/golf'
 
@@ -58,20 +58,38 @@ export default function LeaderboardPage() {
       const day = roundInfo.round.split('_')[0]
       const course = getCourseForRound(ev, day)
 
-      const [holesRes, scoresRes] = await Promise.all([
+      const [holesRes, scoresRes, playersRes] = await Promise.all([
         course?.id ? db('get_course_holes', { course_id: course.id }) : Promise.resolve({ data: [] }),
         db('get_round_scores', { event_id: ev.id, day, round_time: 'morning' }),
+        db('get_event_players', { event_id: ev.id }),
       ])
 
       const courseHoles = holesRes.data || []
       setHoles(courseHoles)
 
-      const scored = (scoresRes.data || []).map(sc => ({
-        ...sc,
-        hole_scores: typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : (sc.hole_scores || {}),
-      }))
+      // Build scored map
+      const scoredMap = {}
+      ;(scoresRes.data || []).forEach(sc => { scoredMap[sc.player_id] = sc })
 
-      setStandings(sortPlayersByScore(scored, courseHoles))
+      // Merge all event players — scored ones get full data, unstarted get zeros
+      const allPlayers = (playersRes.data || []).map(ep => {
+        const sc = scoredMap[ep.player_id]
+        if (sc) return {
+          ...sc,
+          hole_scores: typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : (sc.hole_scores || {}),
+        }
+        return {
+          player_id: ep.player_id,
+          player_name: ep.name,
+          total_score: 0,
+          holes_completed: 0,
+          is_complete: false,
+          hole_scores: {},
+          not_started: true,
+        }
+      })
+
+      setStandings(sortPlayersByScore(allPlayers, courseHoles))
       setLastUpdated(new Date())
     } catch (err) {
       console.error('Leaderboard fetch error:', err)
@@ -173,9 +191,30 @@ function MiniView({ standings, par, currentPlayer }) {
 
       {standings.map((sc, idx) => {
         const isMe = currentPlayer?.id === sc.player_id
+        const isFirst = idx === 0
+        const prevNotStarted = idx > 0 && !standings[idx-1].not_started && sc.not_started
+
+        if (sc.not_started) {
+          return (
+            <React.Fragment key={sc.player_id || idx}>
+              {prevNotStarted && (
+                <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr 52px 40px', padding: '5px 16px', background: 'var(--green-deep)', borderBottom: '1px solid var(--green-mid)' }}>
+                  <span style={{ gridColumn: '1/-1', fontSize: '0.65rem', color: 'var(--gray-500)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Not yet started</span>
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr 52px 40px', alignItems: 'center', padding: '0 16px', borderBottom: '1px solid var(--green-mid)', minHeight: 38, opacity: 0.5 }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--gray-500)' }}>–</span>
+                <span style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>{fmtName(sc.player_name)}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', textAlign: 'right', color: 'var(--gray-500)' }}>–</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', textAlign: 'right', color: 'var(--gray-500)' }}>–</span>
+              </div>
+            </React.Fragment>
+          )
+        }
+
         const { txt, cls } = fmtVsPar(sc.total_score, par)
         const holesIn = sc.holes_completed || Object.keys(sc.hole_scores || {}).length
-        const thruTxt = sc.is_complete || holesIn >= 18 ? 'F' : String(holesIn)
+        const thruTxt = sc.is_complete || holesIn >= 18 ? 'F' : String(holesIn || '–')
         const showPos = !sc.is_tied
 
         return (
@@ -187,28 +226,18 @@ function MiniView({ standings, par, currentPlayer }) {
             background: isMe ? 'rgba(201,168,76,0.08)' : 'transparent',
             borderLeft: isMe ? '2px solid var(--gold)' : '2px solid transparent',
           }}>
-            <span style={{
-              fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 500,
-              color: isMe ? 'var(--gold)' : 'var(--gray-500)',
-            }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 500, color: isMe ? 'var(--gold)' : 'var(--gray-500)' }}>
               {showPos ? sc.finishing_position : ''}
             </span>
-            <span style={{ fontSize: '0.875rem' }}>
-              <span style={{ fontWeight: 500, color: isMe ? 'var(--gold)' : 'var(--cream)' }}>
-                {fmtName(sc.player_name)}
-              </span>
+            <span style={{ fontSize: '0.875rem', fontWeight: 500, color: isMe ? 'var(--gold)' : 'var(--cream)' }}>
+              {fmtName(sc.player_name)}
             </span>
-            <span style={{
-              fontFamily: 'var(--font-mono)', fontSize: '0.95rem', fontWeight: 500,
-              textAlign: 'right',
-              color: cls === 'score-under' ? 'var(--blue-birdie)' : cls === 'score-over' ? 'var(--red)' : 'var(--gray-300)',
-            }}>{txt}</span>
-            <span style={{
-              fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
-              textAlign: 'right',
-              color: thruTxt === 'F' ? 'var(--green-bright)' : 'var(--gray-500)',
-              fontWeight: thruTxt === 'F' ? 600 : 400,
-            }}>{thruTxt}</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.95rem', fontWeight: 500, textAlign: 'right', color: cls === 'score-under' ? 'var(--blue-birdie)' : cls === 'score-over' ? 'var(--red)' : 'var(--gray-300)' }}>
+              {txt}
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', textAlign: 'right', color: thruTxt === 'F' ? 'var(--green-bright)' : 'var(--gray-500)', fontWeight: thruTxt === 'F' ? 600 : 400 }}>
+              {thruTxt}
+            </span>
           </div>
         )
       })}

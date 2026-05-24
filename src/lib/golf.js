@@ -22,6 +22,10 @@ export function sortPlayersByScore(scorecards, courseHoles = []) {
     .map(h => h.hole_number)
 
   const sorted = [...scorecards].sort((a, b) => {
+    // Not started always goes to the bottom
+    if (a.not_started && !b.not_started) return 1
+    if (b.not_started && !a.not_started) return -1
+    if (a.not_started && b.not_started) return (a.player_name || '').localeCompare(b.player_name || '')
     // Primary: total score (lower is better)
     if (a.total_score !== b.total_score) return a.total_score - b.total_score
 
