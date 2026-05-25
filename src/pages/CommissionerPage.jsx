@@ -186,6 +186,76 @@ Do you want to continue advancing the round anyway?`
     setForm(f => ({ ...f, status }))
     fetchData()
     showToast('Status updated', 'success')
+
+    // Offer to generate scramble teams when advancing to a scramble round
+    const teamGenMap = {
+      friday_afternoon_active:   { round: 'friday_afternoon',   label: 'Friday PM Scramble', seededBy: 'friday_morning' },
+      saturday_afternoon_active: { round: 'saturday_afternoon', label: 'Saturday PM Scramble', seededBy: 'saturday_morning' },
+      sunday_morning_active:     { round: 'sunday_morning',     label: 'Sunday Scramble', seededBy: 'combined' },
+    }
+    const teamGen = teamGenMap[status]
+    if (teamGen && isAdvancing) {
+      const generate = window.confirm(
+        `Generate ${teamGen.label} teams now?\n\nTeams will be seeded by ${teamGen.seededBy === 'combined' ? 'combined Fri AM + Sat AM scores' : teamGen.seededBy.replace('_', ' ') + ' scores'}.`
+      )
+      if (generate) {
+        await generateTeamsForRound(teamGen.round, selectedEventId)
+        showToast(`${teamGen.label} teams generated!`, 'success')
+      }
+    }
+  }
+
+  const generateTeamsForRound = async (round, eventId) => {
+    const ev = events.find(e => e.id === eventId)
+    if (!ev) return
+
+    const SCRAMBLE_DEFS = {
+      friday_afternoon:   { seededBy: 'friday',   rt: 'morning' },
+      saturday_afternoon: { seededBy: 'saturday', rt: 'morning' },
+      sunday_morning:     { seededBy: 'combined', rt: null },
+    }
+    const def = SCRAMBLE_DEFS[round]
+    if (!def) return
+
+    let sorted = []
+    if (def.seededBy === 'combined') {
+      const [{ data: combined }, { data: friHoles }, { data: satHoles }] = await Promise.all([
+        db('get_combined_totals', { event_id: eventId }),
+        ev.friday_course_id ? db('get_course_holes', { course_id: ev.friday_course_id }) : Promise.resolve({ data: [] }),
+        ev.saturday_course_id ? db('get_course_holes', { course_id: ev.saturday_course_id }) : Promise.resolve({ data: [] }),
+      ])
+      const { sortCombinedForSunday } = await import('../lib/golf.js')
+      sorted = sortCombinedForSunday(combined || [], friHoles || [], satHoles || [])
+        .map(p => ({ ...p, total_score: p.combined_score }))
+    } else {
+      const [{ data: scores }, { data: holeData }] = await Promise.all([
+        db('get_round_scores', { event_id: eventId, day: def.seededBy, round_time: def.rt }),
+        (() => {
+          const cid = def.seededBy === 'friday' ? ev.friday_course_id : ev.saturday_course_id
+          return cid ? db('get_course_holes', { course_id: cid }) : Promise.resolve({ data: [] })
+        })(),
+      ])
+      const { sortPlayersByScore } = await import('../lib/golf.js')
+      const withScores = (scores || [])
+        .filter(sc => sc.is_complete && (sc.hole_scores ? 'total' in (typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : sc.hole_scores) : false))
+        .map(sc => ({ ...sc, hole_scores: typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : sc.hole_scores }))
+      sorted = sortPlayersByScore(withScores, holeData || [])
+    }
+
+    const { generateScrambleTeams } = await import('../lib/golf.js')
+    try {
+      const generated = generateScrambleTeams(sorted)
+      await db('save_scramble_teams', {
+        event_id: eventId, round,
+        teams: generated.map(t => ({
+          team_number: t.team_number,
+          player_ids: t.players.map(p => p.player_id),
+          finishing_positions: t.finishing_positions,
+        }))
+      })
+    } catch (e) {
+      showToast(e.message, 'error')
+    }
   }
 
   const showToast = (msg, type) => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
