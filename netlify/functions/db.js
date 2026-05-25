@@ -134,7 +134,9 @@ async function handleAction(sql, action, p = {}) {
 
     case 'get_course_holes': {
       const rows = await sql`
-        SELECT * FROM course_holes WHERE course_id = ${p.course_id}
+        SELECT id, course_id, hole_number, par, handicap_rank,
+               yardage_white, yardage_blue, yardage_black, yardage_red
+        FROM course_holes WHERE course_id = ${p.course_id}
         ORDER BY hole_number`
       return { data: rows }
     }
