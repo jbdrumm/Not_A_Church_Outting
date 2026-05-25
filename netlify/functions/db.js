@@ -470,27 +470,37 @@ async function handleAction(sql, action, p = {}) {
           COUNT(*) FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true) as stroke_rounds,
           ROUND(AVG(
             CASE
+              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int
               WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
               THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
-              ELSE (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
+              ELSE NULL
             END
           ) FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true), 1) as avg_score,
           MIN(
             CASE
+              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int
               WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
               THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
-              ELSE (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
+              ELSE NULL
             END
           ) FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true) as best_round,
           MAX(
             CASE
+              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int
               WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
               THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
-              ELSE (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
+              ELSE NULL
             END
           ) FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true) as worst_round,
           COUNT(*) FILTER (WHERE rs.is_scramble = true AND rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}') as scramble_rounds,
-          ROUND(AVG((SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))::numeric) FILTER (WHERE rs.is_scramble = true AND rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'), 1) as scramble_avg
+          ROUND(AVG(
+            CASE
+              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::numeric
+              WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
+              THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))::numeric
+              ELSE NULL
+            END
+          ) FILTER (WHERE rs.is_scramble = true AND rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'), 1) as scramble_avg
         FROM players p
         JOIN round_scores rs ON rs.player_id = p.id
         WHERE (rs.is_complete = true OR (rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'))
@@ -513,16 +523,18 @@ async function handleAction(sql, action, p = {}) {
           COUNT(*) as rounds,
           ROUND(AVG(
             CASE
+              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int
               WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
               THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
-              ELSE (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
+              ELSE NULL
             END
           ), 1) as avg_score,
           MIN(
             CASE
+              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int
               WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
               THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
-              ELSE (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
+              ELSE NULL
             END
           ) as best,
           c.par
