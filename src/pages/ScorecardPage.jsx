@@ -12,7 +12,8 @@ export default function ScorecardPage() {
   const [event, setEvent] = useState(null)
   const [holes, setHoles] = useState([])
   const [groupPlayers, setGroupPlayers] = useState([])
-  const [scores, setScores] = useState({})        // { playerId: { "1": 4, ... } }
+  const [scoringFor, setScoringFor] = useState({})   // { playerId: bool } — who this user is keeping score for
+  const [scores, setScores] = useState({})
   const [currentHole, setCurrentHole] = useState(1)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -35,11 +36,8 @@ export default function ScorecardPage() {
 
       if (course?.id) {
         const { data: h } = await db('get_course_holes', { course_id: course.id })
-        const loaded = (h || []).sort((a, b) => a.hole_number - b.hole_number)
-        // Use loaded holes or fall back to generic 18-hole par-4 layout
-        setHoles(loaded.length > 0 ? loaded : Array.from({length:18},(_,i)=>({hole_number:i+1,par:4,handicap_rank:i+1})))
+        setHoles((h || []).sort((a, b) => a.hole_number - b.hole_number))
       } else {
-        // No course assigned — still allow score entry with generic holes
         setHoles(Array.from({length:18},(_,i)=>({hole_number:i+1,par:4,handicap_rank:i+1})))
       }
 
@@ -49,20 +47,21 @@ export default function ScorecardPage() {
           ? group.players
           : [{ player_id: player.id, name: player.name }]
         setGroupPlayers(members)
+
+        // Default: only score for yourself
+        const defaultScoring = {}
+        members.forEach(m => { defaultScoring[m.player_id] = m.player_id === player.id })
+        setScoringFor(defaultScoring)
+
         if (course?.id) await loadGroupScores(ev, members, day, course.id)
       }
-    } catch (err) {
-      console.error('Scorecard setup error:', err)
-    }
+    } catch (err) { console.error('Scorecard setup error:', err) }
   }
 
   const loadGroupScores = async (ev, members, day, courseId) => {
-    if (!ev?.id || !members?.length) return
     const newScores = {}
     await Promise.all(members.map(async m => {
-      const { data: sc } = await db('get_player_round', {
-        event_id: ev.id, player_id: m.player_id, day, round_time: 'morning'
-      })
+      const { data: sc } = await db('get_player_round', { event_id: ev.id, player_id: m.player_id, day, round_time: 'morning' })
       newScores[m.player_id] = sc?.hole_scores
         ? (typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : sc.hole_scores)
         : {}
@@ -70,7 +69,14 @@ export default function ScorecardPage() {
     setScores(newScores)
   }
 
+  const toggleScoring = (playerId) => {
+    // Can't uncheck yourself
+    if (playerId === player?.id) return
+    setScoringFor(s => ({ ...s, [playerId]: !s[playerId] }))
+  }
+
   const adjustScore = (playerId, holeNum, delta) => {
+    if (!scoringFor[playerId]) return
     setScores(s => {
       const current = s[playerId]?.[String(holeNum)] ?? 4
       const next = Math.max(1, Math.min(15, current + delta))
@@ -86,7 +92,9 @@ export default function ScorecardPage() {
     if (!course?.id) return
 
     const src = overrideScores || scores
-    for (const member of groupPlayers) {
+    // Only save for players we're scoring for
+    const toSave = groupPlayers.filter(m => scoringFor[m.player_id])
+    for (const member of toSave) {
       const holeScores = {}
       Object.entries(src[member.player_id] || {}).forEach(([k, v]) => { if (v) holeScores[k] = parseInt(v) })
       const holesCompleted = Object.keys(holeScores).length
@@ -104,17 +112,19 @@ export default function ScorecardPage() {
 
   const handleNextHole = async () => {
     setSaving(true)
-    // Build committed scores: merge current hole's displayed value (incl default 4)
-    // into each player's score map before saving — bypasses async state flush issue
+    // Commit current hole's displayed score for all players being scored
     const committed = {}
     groupPlayers.forEach(member => {
       const existing = scores[member.player_id] || {}
-      const holeVal = existing[String(currentHole)] ?? 4
-      committed[member.player_id] = { ...existing, [String(currentHole)]: holeVal }
+      if (scoringFor[member.player_id]) {
+        const holeVal = existing[String(currentHole)] ?? 4
+        committed[member.player_id] = { ...existing, [String(currentHole)]: holeVal }
+      } else {
+        committed[member.player_id] = existing
+      }
     })
     await saveProgress(true, committed)
     setSaving(false)
-    // Update local state too so summary reflects it
     setScores(committed)
     setCurrentHole(h => Math.min(18, h + 1))
   }
@@ -124,23 +134,17 @@ export default function ScorecardPage() {
     if (!file) return
     setUploading(true)
     showToast('Analyzing scorecard...', '')
-    const base64 = await new Promise((res, rej) => {
-      const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(file)
-    })
+    const base64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(file) })
     try {
-      const res = await fetch('/.netlify/functions/parse-scorecard', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType: file.type, holeCount: holes.length })
-      })
+      const res = await fetch('/.netlify/functions/parse-scorecard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: base64, mediaType: file.type, holeCount: holes.length }) })
       const data = await res.json()
-      if (data.scores && groupPlayers.length > 0) {
-        // Apply to the logged-in player by default
+      if (data.scores) {
         const target = groupPlayers.find(p => p.player_id === player?.id) || groupPlayers[0]
         const parsed = {}
         data.scores.forEach((s, i) => { if (s) parsed[String(i + 1)] = s })
         setScores(s => ({ ...s, [target.player_id]: parsed }))
         showToast(`Parsed ${Object.keys(parsed).length} holes — review & save`, 'success')
-      } else showToast('Could not parse. Enter manually.', 'error')
+      } else showToast('Could not parse.', 'error')
     } catch { showToast('Upload failed.', 'error') }
     setUploading(false)
   }
@@ -171,83 +175,66 @@ export default function ScorecardPage() {
     </div></div>
   )
 
+  const activeScoring = groupPlayers.filter(m => scoringFor[m.player_id])
+
   return (
     <div className="page">
       <div className="container">
         {/* Header */}
         <div style={{ paddingTop: 20, paddingBottom: 12, borderBottom: '1px solid var(--green-mid)', marginBottom: 12 }}>
-          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gold)', marginBottom: 2 }}>
-            {roundInfo?.label}
-          </p>
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gold)', marginBottom: 2 }}>{roundInfo?.label}</p>
           <h1 style={{ fontSize: '1.6rem' }}>Scorecard</h1>
           {course?.name && <p className="text-muted text-sm" style={{ marginTop: 2 }}>{course.name}{course.par ? ` · Par ${course.par}` : ''}</p>}
         </div>
 
-        {/* Photo upload — commissioner only */}
+        {/* Commissioner photo tab */}
         {isCommissioner && (
           <div style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', gap: 4, marginBottom: 8, background: 'var(--green-deep)', borderRadius: 'var(--radius)', padding: 3 }}>
-              {['manual', 'photo'].map(t => (
-                <button key={t} onClick={() => setActiveTab(t)} style={{
-                  flex: 1, padding: '8px', border: 'none', borderRadius: 5,
-                  background: activeTab === t ? 'var(--green-mid)' : 'transparent',
-                  color: activeTab === t ? 'var(--cream)' : 'var(--gray-500)',
-                  fontFamily: 'var(--font-body)', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer',
-                }}>
+              {['manual','photo'].map(t => (
+                <button key={t} onClick={() => setActiveTab(t)} style={{ flex: 1, padding: '8px', border: 'none', borderRadius: 5, background: activeTab === t ? 'var(--green-mid)' : 'transparent', color: activeTab === t ? 'var(--cream)' : 'var(--gray-500)', fontFamily: 'var(--font-body)', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>
                   {t === 'manual' ? '📝 Hole by Hole' : '📸 Photo Upload'}
                 </button>
               ))}
             </div>
             {activeTab === 'photo' && (
-              <div className="card" style={{ textAlign: 'center' }}>
+              <div className="card" style={{ textAlign: 'center', marginBottom: 12 }}>
                 <p style={{ marginBottom: 8, fontWeight: 500 }}>Upload group scorecard</p>
                 <p className="text-muted text-sm" style={{ marginBottom: 16 }}>Claude AI will parse scores for all players.</p>
                 <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhoto} />
-                <button className="btn btn-primary btn-full" onClick={() => fileRef.current?.click()} disabled={uploading}>
-                  {uploading ? 'Analyzing...' : '📸 Take / Choose Photo'}
-                </button>
+                <button className="btn btn-primary btn-full" onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? 'Analyzing...' : '📸 Take / Choose Photo'}</button>
               </div>
             )}
           </div>
         )}
 
         {/* Hole-by-hole entry */}
-        {activeTab === 'manual' && groupPlayers.length > 0 && (
+        {(activeTab === 'manual' || !isCommissioner) && holes.length > 0 && groupPlayers.length > 0 && (
           <div className="card">
             {/* Hole selector */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <button onClick={() => setCurrentHole(h => Math.max(1, h - 1))} disabled={currentHole === 1}
-                style={{ width: 44, height: 44, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: currentHole === 1 ? 'var(--gray-700)' : 'var(--cream)', fontSize: '1.4rem', cursor: currentHole === 1 ? 'default' : 'pointer' }}>
-                ‹
-              </button>
+                style={{ width: 44, height: 44, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: currentHole === 1 ? 'var(--gray-700)' : 'var(--cream)', fontSize: '1.4rem', cursor: currentHole === 1 ? 'default' : 'pointer' }}>‹</button>
               <div style={{ textAlign: 'center' }}>
                 <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, lineHeight: 1 }}>Hole {currentHole}</p>
-                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: 2 }}>
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--gray-500)', marginTop: 2 }}>
                   Par {holePar} · Hdcp #{currentHoleData?.handicap_rank || '–'}
+                  {currentHoleData?.yardage_white ? ` · ${currentHoleData.yardage_white} yds` : ''}
                 </p>
               </div>
               <button onClick={() => setCurrentHole(h => Math.min(18, h + 1))} disabled={currentHole === 18}
-                style={{ width: 44, height: 44, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: currentHole === 18 ? 'var(--gray-700)' : 'var(--cream)', fontSize: '1.4rem', cursor: currentHole === 18 ? 'default' : 'pointer' }}>
-                ›
-              </button>
+                style={{ width: 44, height: 44, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: currentHole === 18 ? 'var(--gray-700)' : 'var(--cream)', fontSize: '1.4rem', cursor: currentHole === 18 ? 'default' : 'pointer' }}>›</button>
             </div>
 
-            {/* Progress dots — 2 fixed rows: 1-9 top, 10-18 bottom */}
+            {/* Progress dots — 2 rows */}
             <div style={{ marginBottom: 12 }}>
-              {[holes.slice(0, 9), holes.slice(9, 18)].map((row, rowIdx) => (
+              {[holes.slice(0,9), holes.slice(9,18)].map((row, rowIdx) => (
                 <div key={rowIdx} style={{ display: 'flex', gap: 3, justifyContent: 'center', marginBottom: rowIdx === 0 ? 3 : 0 }}>
                   {row.map(h => {
-                    const anyScore = groupPlayers.some(m => scores[m.player_id]?.[String(h.hole_number)])
+                    const anyScore = groupPlayers.some(m => scoringFor[m.player_id] && scores[m.player_id]?.[String(h.hole_number)])
                     return (
                       <button key={h.hole_number} onClick={() => setCurrentHole(h.hole_number)}
-                        style={{
-                          width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                          background: h.hole_number === currentHole ? 'var(--gold)'
-                            : anyScore ? 'var(--green-light)' : 'var(--green-mid)',
-                          fontSize: '0.62rem', fontFamily: 'var(--font-mono)',
-                          color: h.hole_number === currentHole ? 'var(--green-deep)' : 'var(--cream)',
-                          fontWeight: h.hole_number === currentHole ? 700 : 400,
-                        }}>
+                        style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: h.hole_number === currentHole ? 'var(--gold)' : anyScore ? 'var(--green-light)' : 'var(--green-mid)', fontSize: '0.62rem', fontFamily: 'var(--font-mono)', color: h.hole_number === currentHole ? 'var(--green-deep)' : 'var(--cream)', fontWeight: h.hole_number === currentHole ? 700 : 400 }}>
                         {h.hole_number}
                       </button>
                     )
@@ -256,75 +243,64 @@ export default function ScorecardPage() {
               ))}
             </div>
 
-            <div style={{ height: '1px', background: 'var(--green-mid)', marginBottom: 12 }} />
+            <div style={{ height: 1, background: 'var(--green-mid)', marginBottom: 10 }} />
 
-            {/* Per-player score stepper — NO player selector tabs */}
+            {/* Per-player rows */}
             {groupPlayers.map((member, idx) => {
+              const isMe = player?.id === member.player_id
+              const isScoring = scoringFor[member.player_id]
               const holeScore = scores[member.player_id]?.[String(currentHole)] ?? 4
               const diff = holeScore - holePar
               const diffTxt = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`
               const diffColor = diff < 0 ? 'var(--blue-birdie)' : diff > 0 ? 'var(--red)' : 'var(--gray-500)'
-              const playerTotal = Object.values(scores[member.player_id] || {}).reduce((a, v) => a + (parseInt(v) || 0), 0)
-              const playerHoles = Object.keys(scores[member.player_id] || {}).filter(k => scores[member.player_id][k]).length
-              const isMe = player?.id === member.player_id
 
               return (
                 <div key={member.player_id} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 0',
+                  padding: '9px 4px',
                   borderBottom: idx < groupPlayers.length - 1 ? '1px solid var(--green-mid)' : 'none',
-                  background: isMe ? 'rgba(201,168,76,0.05)' : 'transparent',
-                  margin: '0 -4px', padding: '10px 4px',
+                  opacity: isScoring ? 1 : 0.4,
+                  transition: 'opacity 0.15s',
                 }}>
-                  {/* Name + running total */}
+                  {/* Checkbox — can't uncheck yourself */}
+                  <button onClick={() => toggleScoring(member.player_id)}
+                    disabled={isMe}
+                    style={{ width: 20, height: 20, borderRadius: 4, flexShrink: 0, background: isScoring ? 'var(--gold)' : 'transparent', border: `2px solid ${isScoring ? 'var(--gold)' : 'var(--green-mid)'}`, cursor: isMe ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: 'var(--green-deep)' }}>
+                    {isScoring ? '✓' : ''}
+                  </button>
+
+                  {/* Name */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: isMe ? 600 : 400, color: isMe ? 'var(--gold)' : 'var(--cream)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {member.name}
-                    </div>
-                    {playerHoles > 0 && (
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: 1 }}>
-                        {playerTotal} ({playerHoles}/18)
-                      </div>
-                    )}
+                    <span style={{ fontWeight: isMe ? 600 : 400, color: isMe ? 'var(--gold)' : 'var(--cream)', fontSize: '0.9rem' }}>{member.name}</span>
                   </div>
 
-                  {/* Decrease */}
-                  <button onClick={() => adjustScore(member.player_id, currentHole, -1)}
-                    style={{ width: 36, height: 36, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: 'var(--cream)', fontSize: '1.2rem', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    −
-                  </button>
-
-                  {/* Score */}
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.5rem', fontWeight: 700, minWidth: 28, textAlign: 'center', color: 'var(--cream)' }}>
-                    {holeScore}
-                  </span>
-
-                  {/* Increase */}
-                  <button onClick={() => adjustScore(member.player_id, currentHole, 1)}
-                    style={{ width: 36, height: 36, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: 'var(--cream)', fontSize: '1.2rem', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    +
-                  </button>
-
-                  {/* +/– par */}
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 500, minWidth: 28, textAlign: 'right', color: diffColor, flexShrink: 0 }}>
-                    {diffTxt}
-                  </span>
+                  {/* Steppers — hidden when not scoring */}
+                  {isScoring ? (
+                    <>
+                      <button onClick={() => adjustScore(member.player_id, currentHole, -1)}
+                        style={{ width: 36, height: 36, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: 'var(--cream)', fontSize: '1.2rem', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.5rem', fontWeight: 700, minWidth: 28, textAlign: 'center' }}>{holeScore}</span>
+                      <button onClick={() => adjustScore(member.player_id, currentHole, 1)}
+                        style={{ width: 36, height: 36, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: 'var(--cream)', fontSize: '1.2rem', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 500, minWidth: 28, textAlign: 'right', color: diffColor, flexShrink: 0 }}>{diffTxt}</span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted" style={{ fontFamily: 'var(--font-mono)' }}>not scoring</span>
+                  )}
                 </div>
               )
             })}
 
-            <div style={{ height: '1px', background: 'var(--green-mid)', margin: '8px 0 12px' }} />
+            <div style={{ height: 1, background: 'var(--green-mid)', margin: '8px 0 12px' }} />
 
             {/* Action row */}
             <div style={{ display: 'flex', gap: 8 }}>
               {currentHole < 18 ? (
-                <button className="btn btn-primary btn-full"
-                  onClick={handleNextHole} disabled={saving}>
+                <button className="btn btn-primary btn-full" onClick={handleNextHole} disabled={saving}>
                   {saving ? 'Saving...' : 'Save & Next →'}
                 </button>
               ) : (
-                <button className="btn btn-primary btn-full"
-                  onClick={() => saveProgress(false)} disabled={saving}>
+                <button className="btn btn-primary btn-full" onClick={() => saveProgress(false)} disabled={saving}>
                   {saving ? 'Saving...' : 'Save Hole 18 ✓'}
                 </button>
               )}
@@ -332,23 +308,25 @@ export default function ScorecardPage() {
           </div>
         )}
 
-        {/* Group summary */}
-        {groupPlayers.length > 1 && activeTab === 'manual' && (
+        {/* Group summary — total score and +/– only */}
+        {groupPlayers.length > 1 && (
           <div className="card card-sm" style={{ marginTop: 8 }}>
             <p className="text-xs text-muted text-mono" style={{ marginBottom: 8, textTransform: 'uppercase' }}>Group Summary</p>
             {groupPlayers.map(m => {
               const pts = scores[m.player_id] || {}
               const tot = calculateTotal(Object.fromEntries(Object.entries(pts).filter(([,v]) => v)))
-              const h = Object.values(pts).filter(Boolean).length
               const isMe = player?.id === m.player_id
+              const par = course?.par
+              const diff = tot && par ? tot - par : null
+              const diffTxt = diff === null ? '–' : diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`
+              const diffColor = diff < 0 ? 'var(--blue-birdie)' : diff > 0 ? 'var(--red)' : 'var(--gray-300)'
               return (
                 <div key={m.player_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--green-mid)' }}>
                   <span style={{ fontWeight: isMe ? 600 : 400, color: isMe ? 'var(--gold)' : 'var(--cream)', fontSize: '0.875rem' }}>{m.name}</span>
-                  <span className="text-mono text-sm">
-                    {tot > 0 ? tot : '–'}
-                    {h > 0 && h < 18 && <span className="text-muted" style={{ marginLeft: 4, fontSize: '0.7rem' }}>({h}/18)</span>}
-                    {h >= 18 && <span style={{ marginLeft: 4, color: 'var(--green-bright)', fontSize: '0.7rem' }}>✓</span>}
-                  </span>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.95rem' }}>{tot || '–'}</span>
+                    {tot > 0 && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: diffColor }}>{diffTxt}</span>}
+                  </div>
                 </div>
               )
             })}

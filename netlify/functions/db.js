@@ -457,6 +457,87 @@ async function handleAction(sql, action, p = {}) {
       return { data: fromGroups }
     }
 
+
+    case 'get_player_career_stats': {
+      // Career stats for all players: avg score, rounds, best/worst, scramble stats
+      // Only count stroke play (friday/saturday morning) rounds
+      // Exclude 2022 Fri PM (known data gap) — handled by is_scramble=false filter
+      const rows = await sql`
+        SELECT
+          p.id as player_id,
+          p.name,
+          COUNT(*) FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true) as stroke_rounds,
+          ROUND(AVG((SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores)))
+            FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true), 2) as avg_score,
+          MIN((SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores)))
+            FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true) as best_round,
+          MAX((SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores)))
+            FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true) as worst_round,
+          COUNT(*) FILTER (WHERE rs.is_scramble = true AND rs.is_complete = true) as scramble_rounds,
+          ROUND(AVG(rs.score::numeric) FILTER (WHERE rs.is_scramble = true AND rs.is_complete = true), 1) as scramble_avg
+        FROM players p
+        JOIN round_scores rs ON rs.player_id = p.id
+        WHERE rs.is_complete = true
+        GROUP BY p.id, p.name
+        ORDER BY avg_score ASC NULLS LAST`
+      return { data: rows }
+    }
+
+    case 'get_course_averages': {
+      // Average score per player per course (stroke play only)
+      const rows = await sql`
+        SELECT
+          p.name as player_name,
+          c.name as course_name,
+          COUNT(*) as rounds,
+          ROUND(AVG((SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))), 2) as avg_score,
+          MIN((SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))) as best,
+          c.par
+        FROM round_scores rs
+        JOIN players p ON p.id = rs.player_id
+        JOIN courses c ON c.id = rs.course_id
+        WHERE rs.is_scramble = false
+          AND rs.is_complete = true
+        GROUP BY p.name, c.name, c.par
+        ORDER BY c.name, avg_score ASC`
+      return { data: rows }
+    }
+
+    case 'get_scramble_wins': {
+      // For each scramble round, find the winning team score
+      -- and credit those players with a win
+      const rows = await sql`
+        WITH team_scores AS (
+          SELECT
+            rs.event_id, rs.day, rs.round_time, rs.scramble_team_id,
+            rs.score,
+            e.year
+          FROM round_scores rs
+          JOIN events e ON e.id = rs.event_id
+          WHERE rs.is_scramble = true
+            AND rs.scramble_team_id IS NOT NULL
+            AND rs.score IS NOT NULL
+          GROUP BY rs.event_id, rs.day, rs.round_time, rs.scramble_team_id, rs.score, e.year
+        ),
+        winners AS (
+          SELECT DISTINCT ON (event_id, day, round_time)
+            event_id, day, round_time, scramble_team_id, score, year
+          FROM team_scores
+          ORDER BY event_id, day, round_time, score ASC
+        )
+        SELECT
+          p.name as player_name,
+          COUNT(*) as scramble_wins,
+          STRING_AGG(w.year || ' ' || w.day || ' ' || w.round_time, ', ' ORDER BY w.year) as win_details
+        FROM winners w
+        JOIN round_scores rs ON rs.scramble_team_id = w.scramble_team_id
+          AND rs.event_id = w.event_id AND rs.day = w.day AND rs.round_time = w.round_time
+        JOIN players p ON p.id = rs.player_id
+        GROUP BY p.name
+        ORDER BY scramble_wins DESC`
+      return { data: rows }
+    }
+
     default:
       throw new Error(`Unknown action: ${action}`)
   }
