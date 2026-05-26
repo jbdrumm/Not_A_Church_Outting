@@ -74,8 +74,8 @@ function EventTab() {
     saturday_afternoon_tee_time: '',
     sunday_course_id: '',
     sunday_tee_time: '',
-    friday_split: false,     // separate AM/PM courses on Friday
-    saturday_split: false,   // separate AM/PM courses on Saturday
+    friday_split: false,
+    saturday_split: false,
   }
 
   useEffect(() => { fetchData() }, [])
@@ -101,15 +101,17 @@ function EventTab() {
       status: ev.status || 'upcoming',
       player_count: ev.player_count || 20,
       friday_course_id: ev.friday_course_id || '',
-      friday_tee_time: ev.friday_tee_time || '',
-      friday_afternoon_tee_time: ev.friday_afternoon_tee_time || '',
+      friday_pm_course_id: ev.friday_pm_course_id || '',
+      friday_tee_time: stripSeconds(ev.friday_tee_time),
+      friday_afternoon_tee_time: stripSeconds(ev.friday_afternoon_tee_time),
       saturday_course_id: ev.saturday_course_id || '',
-      saturday_tee_time: ev.saturday_tee_time || '',
-      saturday_afternoon_tee_time: ev.saturday_afternoon_tee_time || '',
+      saturday_pm_course_id: ev.saturday_pm_course_id || '',
+      saturday_tee_time: stripSeconds(ev.saturday_tee_time),
+      saturday_afternoon_tee_time: stripSeconds(ev.saturday_afternoon_tee_time),
       sunday_course_id: ev.sunday_course_id || '',
-      sunday_tee_time: ev.sunday_tee_time || '',
-      friday_split: false,
-      saturday_split: false,
+      sunday_tee_time: stripSeconds(ev.sunday_tee_time),
+      friday_split: !!(ev.friday_pm_course_id && ev.friday_pm_course_id !== ev.friday_course_id),
+      saturday_split: !!(ev.saturday_pm_course_id && ev.saturday_pm_course_id !== ev.saturday_course_id),
     })
   }
 
@@ -125,9 +127,11 @@ function EventTab() {
     if (!form) return
     setSaving(true)
     const payload = { ...form }
-    // If not multiple courses, PM course = AM course for each day
-    if (!form.multiple_courses) {
+    // If split not checked, set PM course same as AM (no separate PM course)
+    if (!form.friday_split) {
       payload.friday_pm_course_id = form.friday_course_id
+    }
+    if (!form.saturday_split) {
       payload.saturday_pm_course_id = form.saturday_course_id
     }
     const result = await db('upsert_event', payload).catch(e => ({ error: e.message }))
