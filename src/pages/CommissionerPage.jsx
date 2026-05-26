@@ -682,19 +682,24 @@ function ScoresTab() {
   const selectTeam = async (team) => {
     const pids = typeof team.player_ids === 'string' ? JSON.parse(team.player_ids) : team.player_ids
     const def = ALL_ROUNDS.find(r => r.key === selectedRound)
-    // Get player names from round scores if available
-    const { data: allScores } = await db('get_round_scores', { event_id: event.id, day: def.day, round_time: def.rt })
+    // Always use event roster for names — don't depend on scores existing
+    const { data: evPlayers } = await db('get_players_for_event', { event_id: event.id })
     const playerMap = {}
-    allScores?.forEach(s => { playerMap[s.player_id] = s.player_name })
+    evPlayers?.forEach(p => { playerMap[p.player_id] = p.name })
     const members = pids.map(pid => ({ player_id: pid, name: playerMap[pid] || pid }))
     setGroupMembers(members)
     setSelectedGroupId(team.id || team.team_number)
-    // Load existing scramble score
+    setScores({})
+    // Load existing hole scores from first team member
     if (members[0]) {
       const { data: sc } = await db('get_player_round', {
         event_id: event.id, player_id: members[0].player_id, day: def.day, round_time: def.rt
       })
-      if (sc?.total_score) setScrambleScore(String(sc.total_score))
+      if (sc?.hole_scores) {
+        const hs = typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : sc.hole_scores
+        // If stored as {total: N}, use empty scores (can't reconstruct per-hole)
+        if (!hs['total']) setScores({ [members[0].player_id]: hs })
+      }
     }
   }
 
@@ -715,17 +720,35 @@ function ScoresTab() {
     const course = getCourseForRound(event, def.day, def.rt)
 
     if (def.is_scramble) {
-      // Scramble: one score for all players
-      const score = parseInt(scrambleScore)
-      if (!isNaN(score)) {
-        await db('save_scramble_score', {
-          event_id: event.id, course_id: course?.id,
-          day: def.day, round_time: def.rt,
-          player_ids: groupMembers.map(m => m.player_id),
-          score,
+      // Scramble: hole-by-hole entered for team (stored as single score for all members)
+      // Use first member's scores as the team score
+      const pid0 = groupMembers[0]?.player_id
+      const rawScores = scores[pid0] || {}
+      // Fill all 18 holes with par defaults for any unset holes
+      const holeScores = {}
+      holes.forEach(h => { holeScores[String(h.hole_number)] = h.par })
+      Object.entries(rawScores).forEach(([k, v]) => { if (v) holeScores[k] = parseInt(v) })
+      const holesCompleted = Object.keys(holeScores).length
+      // Convert to {total: vsPar} format for consistency with historical data
+      const vsPar = Object.entries(holeScores).reduce((sum, [holeNum, score]) => {
+        const hd = holes.find(h => h.hole_number === parseInt(holeNum))
+        return sum + (parseInt(score)||0) - (hd?.par || 4)
+      }, 0)
+      const storageHoles = holesCompleted >= 18 ? { total: vsPar } : holeScores
+      for (const member of groupMembers) {
+        await db('upsert_round_score', {
+          event_id: event.id, player_id: member.player_id, course_id: course?.id,
+          day: def.day, round_time: def.rt, is_scramble: true,
+          hole_scores: storageHoles,
+          holes_completed: holesCompleted >= 18 ? 18 : holesCompleted,
+          is_complete: holesCompleted >= 18,
         })
-        showToast('Scramble score saved!', 'success')
       }
+      // Update scores state so dots go green
+      const updatedScores = { ...scores }
+      groupMembers.forEach(m => { updatedScores[m.player_id] = holeScores })
+      setScores(updatedScores)
+      showToast('Team score saved!', 'success')
     } else {
       // Stroke play: commit all 18 holes, using par as default for any unedited holes
       for (const member of groupMembers) {
@@ -920,28 +943,85 @@ function ScoresTab() {
         </div>
       )}
 
-      {/* ── SCRAMBLE score entry ───────────────────────────────── */}
-      {def?.is_scramble && groupMembers.length > 0 && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <p className="text-xs text-muted text-mono" style={{ marginBottom: 12, textTransform: 'uppercase' }}>Team Score</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: 4 }}>Score vs Par</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={() => setScrambleScore(s => String((parseInt(s)||0) - 1))}
-                  style={{ width: 36, height: 36, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: 'var(--cream)', fontSize: '1.2rem', cursor: 'pointer' }}>−</button>
-                <span className="text-mono" style={{ fontSize: '1.4rem', fontWeight: 700, minWidth: 48, textAlign: 'center',
-                  color: parseInt(scrambleScore) < 0 ? 'var(--blue-birdie)' : parseInt(scrambleScore) > 0 ? 'var(--red)' : 'var(--cream)' }}>
-                  {scrambleScore === '' ? '–' : parseInt(scrambleScore) > 0 ? `+${scrambleScore}` : scrambleScore}
-                </span>
-                <button onClick={() => setScrambleScore(s => String((parseInt(s)||0) + 1))}
-                  style={{ width: 36, height: 36, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: 'var(--cream)', fontSize: '1.2rem', cursor: 'pointer' }}>+</button>
-              </div>
+      {/* ── SCRAMBLE hole-by-hole entry (same as stroke play but single "Team" row) ── */}
+      {def?.is_scramble && groupMembers.length > 0 && holes.length > 0 && (
+        <div className="card">
+          {/* Hole selector */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <button onClick={() => setCurrentHole(h => Math.max(1, h - 1))} disabled={currentHole === 1}
+              style={{ width: 40, height: 40, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: 'var(--cream)', fontSize: '1.2rem', cursor: 'pointer' }}>‹</button>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', fontWeight: 700, lineHeight: 1 }}>Hole {currentHole}</p>
+              <p className="text-xs text-muted text-mono" style={{ marginTop: 2 }}>
+                Par {holePar} · Hdcp #{currentHoleData?.handicap_rank || '–'}
+              </p>
+              {(currentHoleData?.yardage_black || currentHoleData?.yardage_blue || currentHoleData?.yardage_white || currentHoleData?.yardage_red) && (
+                <p className="text-xs text-muted text-mono" style={{ marginTop: 1 }}>
+                  {[currentHoleData.yardage_black&&`⬛ ${currentHoleData.yardage_black}`,currentHoleData.yardage_blue&&`🔵 ${currentHoleData.yardage_blue}`,currentHoleData.yardage_white&&`⚪ ${currentHoleData.yardage_white}`,currentHoleData.yardage_red&&`🔴 ${currentHoleData.yardage_red}`].filter(Boolean).join(' · ')}
+                </p>
+              )}
             </div>
+            <button onClick={() => setCurrentHole(h => Math.min(18, h + 1))} disabled={currentHole === 18}
+              style={{ width: 40, height: 40, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: 'var(--cream)', fontSize: '1.2rem', cursor: 'pointer' }}>›</button>
           </div>
-          <button className="btn btn-primary btn-full" style={{ marginTop: 16 }} onClick={saveAll} disabled={saving || scrambleScore === ''}>
-            {saving ? 'Saving...' : 'Save Team Score'}
-          </button>
+
+          {/* Progress dots */}
+          <div style={{ marginBottom: 12 }}>
+            {[holes.slice(0,9), holes.slice(9,18)].map((row, ri) => (
+              <div key={ri} style={{ display: 'flex', gap: 3, justifyContent: 'center', marginBottom: ri===0?3:0 }}>
+                {row.map(h => {
+                  // Use first member's scores as representative for dots
+                  const pid0 = groupMembers[0]?.player_id
+                  const scored = pid0 && scores[pid0]?.[String(h.hole_number)] != null
+                  return (
+                    <button key={h.hole_number} onClick={() => setCurrentHole(h.hole_number)}
+                      style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: h.hole_number===currentHole?'var(--gold)':scored?'var(--green-light)':'var(--green-mid)', fontSize: '0.62rem', fontFamily: 'var(--font-mono)', color: h.hole_number===currentHole?'var(--green-deep)':'var(--cream)', fontWeight: h.hole_number===currentHole?700:400 }}>
+                      {h.hole_number}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ height: 1, background: 'var(--green-mid)', marginBottom: 12 }} />
+
+          {/* Single team score row */}
+          {(() => {
+            const pid0 = groupMembers[0]?.player_id
+            const holeScore = pid0 ? (scores[pid0]?.[String(currentHole)] ?? holePar) : holePar
+            const diff = holeScore - holePar
+            const diffTxt = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`
+            const diffColor = diff < 0 ? 'var(--blue-birdie)' : diff > 0 ? 'var(--red)' : 'var(--gray-500)'
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 4px' }}>
+                <span style={{ flex: 1, fontWeight: 600, color: 'var(--gold)', fontSize: '0.95rem' }}>
+                  Team {scrambleTeams.find(t => (t.id || t.team_number) === selectedGroupId)?.team_number || ''}
+                </span>
+                <button onClick={() => {
+                  if (!pid0) return
+                  setScores(s => ({ ...s, [pid0]: { ...(s[pid0]||{}), [String(currentHole)]: Math.max(1, (s[pid0]?.[String(currentHole)] ?? holePar) - 1) } }))
+                }} style={{ width: 36, height: 36, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: 'var(--cream)', fontSize: '1.2rem', cursor: 'pointer' }}>−</button>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.5rem', fontWeight: 700, minWidth: 28, textAlign: 'center' }}>{holeScore}</span>
+                <button onClick={() => {
+                  if (!pid0) return
+                  setScores(s => ({ ...s, [pid0]: { ...(s[pid0]||{}), [String(currentHole)]: Math.min(15, (s[pid0]?.[String(currentHole)] ?? holePar) + 1) } }))
+                }} style={{ width: 36, height: 36, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: 'var(--cream)', fontSize: '1.2rem', cursor: 'pointer' }}>+</button>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 500, minWidth: 28, textAlign: 'right', color: diffColor }}>{diffTxt}</span>
+              </div>
+            )
+          })()}
+
+          <div style={{ height: 1, background: 'var(--green-mid)', margin: '8px 0 12px' }} />
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            {currentHole < 18 && (
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setCurrentHole(h => h + 1)}>Next →</button>
+            )}
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={saveAll} disabled={saving}>
+              {saving ? 'Saving...' : 'Save All'}
+            </button>
+          </div>
         </div>
       )}
 
