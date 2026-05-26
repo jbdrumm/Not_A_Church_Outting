@@ -318,10 +318,12 @@ async function handleAction(sql, action, p = {}) {
       await sql`DELETE FROM scramble_teams
         WHERE event_id = ${p.event_id} AND round = ${p.round}`
       for (const team of p.teams) {
+        // Pass arrays directly — neon handles native Postgres array formatting
+        const playerIds = Array.isArray(team.player_ids) ? team.player_ids : JSON.parse(team.player_ids)
+        const positions = Array.isArray(team.finishing_positions) ? team.finishing_positions : JSON.parse(team.finishing_positions)
         await sql`
           INSERT INTO scramble_teams (event_id, round, team_number, player_ids, finishing_positions)
-          VALUES (${p.event_id}, ${p.round}, ${team.team_number},
-            ${JSON.stringify(team.player_ids)}, ${JSON.stringify(team.finishing_positions)})`
+          VALUES (${p.event_id}, ${p.round}, ${team.team_number}, ${playerIds}, ${positions})`
       }
       return { data: { ok: true } }
     }
