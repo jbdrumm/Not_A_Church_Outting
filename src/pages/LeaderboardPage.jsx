@@ -424,8 +424,15 @@ function DetailView({ standings, holes, par, currentPlayer }) {
                     </div>
                   </td>
                   {(() => {
-                    const frontTotal = sortedHoles.slice(0,9).reduce((sum, h) => sum + (holeScores[String(h.hole_number)] || 0), 0)
-                    const backTotal  = sortedHoles.slice(9,18).reduce((sum, h) => sum + (holeScores[String(h.hole_number)] || 0), 0)
+                    // For scramble, show gross strokes per nine; for stroke play same
+                    const frontTotal = sortedHoles.slice(0,9).reduce((sum, h) => {
+                      const v = holeScores[String(h.hole_number)]
+                      return sum + (v != null ? parseInt(v) : 0)
+                    }, 0)
+                    const backTotal  = sortedHoles.slice(9,18).reduce((sum, h) => {
+                      const v = holeScores[String(h.hole_number)]
+                      return sum + (v != null ? parseInt(v) : 0)
+                    }, 0)
                     const frontPlayed = sortedHoles.slice(0,9).filter(h => holeScores[String(h.hole_number)] != null).length
                     const backPlayed  = sortedHoles.slice(9,18).filter(h => holeScores[String(h.hole_number)] != null).length
                     return (

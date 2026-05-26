@@ -286,7 +286,7 @@ function EventTab() {
   const showToast = (msg, type) => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
 
   const CourseSelect = ({ label, field }) => (
-    <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
+    <div className="form-group" style={{ margin: 0 }}>
       <label>{label}</label>
       <select className="input" value={form?.[field] || ''} onChange={e => set(field, e.target.value)}>
         <option value="">Select course...</option>
@@ -404,18 +404,23 @@ function EventTab() {
                 </button>
               </div>
               {form.friday_split ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <CourseSelect label="AM Course" field="friday_course_id" />
-                  <TimeInput label="AM Tee Time" field="friday_tee_time" />
-                  <CourseSelect label="PM Course" field="friday_pm_course_id" />
-                  <TimeInput label="PM Tee Time" field="friday_afternoon_tee_time" />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <CourseSelect label="AM Course" field="friday_course_id" />
+                    <TimeInput label="AM Tee Time" field="friday_tee_time" />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <CourseSelect label="PM Course" field="friday_pm_course_id" />
+                    <TimeInput label="PM Tee Time" field="friday_afternoon_tee_time" />
+                  </div>
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <CourseSelect label="Course" field="friday_course_id" />
-                  <div />
-                  <TimeInput label="AM Tee Time" field="friday_tee_time" />
-                  <TimeInput label="PM Tee Time" field="friday_afternoon_tee_time" />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <TimeInput label="AM Tee Time" field="friday_tee_time" />
+                    <TimeInput label="PM Tee Time" field="friday_afternoon_tee_time" />
+                  </div>
                 </div>
               )}
             </div>
@@ -430,18 +435,23 @@ function EventTab() {
                 </button>
               </div>
               {form.saturday_split ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <CourseSelect label="AM Course" field="saturday_course_id" />
-                  <TimeInput label="AM Tee Time" field="saturday_tee_time" />
-                  <CourseSelect label="PM Course" field="saturday_pm_course_id" />
-                  <TimeInput label="PM Tee Time" field="saturday_afternoon_tee_time" />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <CourseSelect label="AM Course" field="saturday_course_id" />
+                    <TimeInput label="AM Tee Time" field="saturday_tee_time" />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <CourseSelect label="PM Course" field="saturday_pm_course_id" />
+                    <TimeInput label="PM Tee Time" field="saturday_afternoon_tee_time" />
+                  </div>
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <CourseSelect label="Course" field="saturday_course_id" />
-                  <div />
-                  <TimeInput label="AM Tee Time" field="saturday_tee_time" />
-                  <TimeInput label="PM Tee Time" field="saturday_afternoon_tee_time" />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <TimeInput label="AM Tee Time" field="saturday_tee_time" />
+                    <TimeInput label="PM Tee Time" field="saturday_afternoon_tee_time" />
+                  </div>
                 </div>
               )}
             </div>

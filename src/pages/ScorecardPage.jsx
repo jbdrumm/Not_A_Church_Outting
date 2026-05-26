@@ -68,6 +68,12 @@ export default function ScorecardPage() {
         : {}
     }))
     setScores(newScores)
+    // Jump to first unscored hole (based on logged-in player's scores)
+    const myScores = newScores[player?.id] || {}
+    const scoredHoles = Object.keys(myScores).map(Number).filter(n => myScores[String(n)] != null)
+    if (scoredHoles.length > 0 && scoredHoles.length < 18) {
+      setCurrentHole(Math.min(18, Math.max(...scoredHoles) + 1))
+    }
   }
 
   const toggleScoring = (playerId) => {
@@ -466,8 +472,13 @@ function ScrambleScoreEntry({ event, roundInfo, player }) {
     })
     if (sc?.hole_scores) {
       const hs = typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : sc.hole_scores
-      // Convert stored scores back to display values
       setScores(hs)
+      // Jump to first unscored hole
+      const scoredHoles = Object.keys(hs).map(Number).filter(n => hs[String(n)] != null)
+      if (scoredHoles.length > 0) {
+        const nextHole = Math.min(18, Math.max(...scoredHoles) + 1)
+        setCurrentHole(nextHole)
+      }
     }
   }
 
@@ -487,13 +498,20 @@ function ScrambleScoreEntry({ event, roundInfo, player }) {
   }
 
   const saveAndNext = async () => {
+    if (saving) return
     setSaving(true)
-    // Commit current hole
-    const committed = { ...scores, [String(currentHole)]: scores[String(currentHole)] ?? holePar }
-    setScores(committed)
-    await saveToDb(committed)
-    setSaving(false)
-    setCurrentHole(h => Math.min(18, h + 1))
+    try {
+      // Compute holePar from holes array directly (avoid stale closure)
+      const hd = holes.find(h => h.hole_number === currentHole)
+      const hp = hd?.par || 4
+      const committed = { ...scores, [String(currentHole)]: scores[String(currentHole)] ?? hp }
+      setScores(committed)
+      await saveToDb(committed)
+      // Advance to next hole
+      const next = Math.min(18, currentHole + 1)
+      setCurrentHole(next)
+    } catch(e) { console.error('saveAndNext error:', e) }
+    finally { setSaving(false) }
   }
 
   const saveHole18 = async () => {
