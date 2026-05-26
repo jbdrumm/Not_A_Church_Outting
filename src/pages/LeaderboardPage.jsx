@@ -308,14 +308,19 @@ function DetailView({ standings, holes, par, currentPlayer }) {
                 # · Player
               </th>
               {sortedHoles.map(h => (
-                <th key={h.hole_number} style={{
-                  padding: '5px 4px', textAlign: 'center', fontFamily: 'var(--font-mono)',
-                  fontSize: '0.65rem', color: 'var(--gray-500)', fontWeight: 500, width: 28,
-                  background: 'var(--green-deep)',
-                  borderLeft: h.hole_number === 10 ? '2px solid var(--green-mid)' : 'none',
-                }}>
-                  {h.hole_number}
-                </th>
+                <React.Fragment key={h.hole_number}>
+                  <th style={{
+                    padding: '5px 4px', textAlign: 'center', fontFamily: 'var(--font-mono)',
+                    fontSize: '0.65rem', color: 'var(--gray-500)', fontWeight: 500, width: 28,
+                    background: 'var(--green-deep)',
+                    borderLeft: h.hole_number === 10 ? '2px solid var(--green-mid)' : 'none',
+                  }}>
+                    {h.hole_number}
+                  </th>
+                  {h.hole_number === 9 && (
+                    <th style={{ padding: '5px 5px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--gray-500)', fontWeight: 500, minWidth: 30, background: 'var(--green-deep)', borderLeft: '2px solid var(--green-mid)' }}>OUT</th>
+                  )}
+                </React.Fragment>
               ))}
               {['Tot', '+/–'].map((h, i) => (
                 <th key={h} style={{
@@ -356,26 +361,38 @@ function DetailView({ standings, holes, par, currentPlayer }) {
                       </span>
                     </div>
                   </td>
-                  {sortedHoles.map(h => {
-                    const s = holeScores[String(h.hole_number)]
-                    const hcls = holeClass(s, h.par)
-                    const st = holeStyle[hcls] || {}
+                  {(() => {
+                    const frontTotal = sortedHoles.slice(0,9).reduce((sum, h) => sum + (holeScores[String(h.hole_number)] || 0), 0)
+                    const backTotal  = sortedHoles.slice(9,18).reduce((sum, h) => sum + (holeScores[String(h.hole_number)] || 0), 0)
+                    const frontPlayed = sortedHoles.slice(0,9).filter(h => holeScores[String(h.hole_number)] != null).length
+                    const backPlayed  = sortedHoles.slice(9,18).filter(h => holeScores[String(h.hole_number)] != null).length
                     return (
-                      <td key={h.hole_number} style={{
-                        padding: '4px 3px', textAlign: 'center',
-                        background: rowBg, borderBottom: '1px solid var(--green-mid)',
-                        borderLeft: h.hole_number === 10 ? '2px solid var(--green-mid)' : 'none',
-                      }}>
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          width: 22, height: 22, fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 500,
-                          ...st
-                        }}>
-                          {s != null ? s : '·'}
-                        </span>
-                      </td>
+                      <>
+                        {sortedHoles.map(h => {
+                          const s = holeScores[String(h.hole_number)]
+                          const hcls = holeClass(s, h.par)
+                          const st = holeStyle[hcls] || {}
+                          return (
+                            <React.Fragment key={h.hole_number}>
+                              <td style={{ padding: '4px 3px', textAlign: 'center', background: rowBg, borderBottom: '1px solid var(--green-mid)', borderLeft: h.hole_number === 10 ? '2px solid var(--green-mid)' : 'none' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 500, ...st }}>
+                                  {s != null ? s : '·'}
+                                </span>
+                              </td>
+                              {h.hole_number === 9 && (
+                                <td style={{ padding: '7px 5px', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 600, textAlign: 'center', background: rowBg, borderBottom: '1px solid var(--green-mid)', borderLeft: '2px solid var(--green-mid)', color: 'var(--gray-300)' }}>
+                                  {frontPlayed > 0 ? frontTotal : '·'}
+                                </td>
+                              )}
+                            </React.Fragment>
+                          )
+                        })}
+                        <td style={{ padding: '7px 5px', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 600, textAlign: 'center', background: rowBg, borderBottom: '1px solid var(--green-mid)', borderLeft: '2px solid var(--green-mid)', color: 'var(--gray-300)' }}>
+                          {backPlayed > 0 ? backTotal : '·'}
+                        </td>
+                      </>
                     )
-                  })}
+                  })()}
                   <td style={{ padding: '7px 6px', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 500, textAlign: 'right', background: rowBg, borderBottom: '1px solid var(--green-mid)', borderLeft: '2px solid var(--green-mid)' }}>
                     {sc.total_score || '–'}
                   </td>
