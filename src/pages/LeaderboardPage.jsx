@@ -399,8 +399,18 @@ function DetailView({ standings, holes, par, currentPlayer }) {
             {standings.map((sc, idx) => {
               const isMe = currentPlayer?.id === sc.player_id
               const holeScores = typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : (sc.hole_scores || {})
-              const { txt, cls } = fmtVsPar(sc.total_score, par)
+              // Scramble: total_score IS already +/- par (vsPar). Don't subtract par again.
+              // Stroke play: total_score is gross strokes, use fmtVsPar normally.
               const holesIn = sc.holes_completed || Object.keys(holeScores).length
+              const { txt, cls } = sc.is_scramble
+                ? (() => {
+                    if (!holesIn) return { txt: '–', cls: '' }
+                    const d = sc.total_score
+                    return d === 0 ? { txt: 'E', cls: 'score-even' }
+                      : d < 0 ? { txt: String(d), cls: 'score-under' }
+                      : { txt: `+${d}`, cls: 'score-over' }
+                  })()
+                : fmtVsPar(sc.total_score, par)
               const thruTxt = sc.is_complete || holesIn >= 18 ? 'F' : String(holesIn)
               const rowBg = isMe ? 'rgba(201,168,76,0.08)' : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'
               const stickyBg = isMe ? 'rgba(201,168,76,0.12)' : idx % 2 === 0 ? 'var(--green-deep)' : 'var(--green-dark)'

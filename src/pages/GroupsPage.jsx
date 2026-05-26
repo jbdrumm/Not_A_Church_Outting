@@ -126,7 +126,17 @@ export default function GroupsPage() {
 
   const tab = TABS.find(t => t.key === activeTab)
   const isMyGroup = (groupPlayers) => player && groupPlayers?.some(p => p.player_id === player.id)
-  const baseTeeTime = tab?.day === 'friday' ? event?.friday_tee_time : event?.saturday_tee_time
+  // For AM tabs use morning tee time, for PM/scramble tabs use afternoon tee time
+  const baseTeeTime = (() => {
+    if (!tab || !event) return null
+    if (tab.type === 'groups') {
+      return tab.day === 'friday' ? event.friday_tee_time : event.saturday_tee_time
+    } else {
+      // Scramble tabs — use afternoon tee time
+      if (tab.day === 'sunday') return event.sunday_tee_time
+      return tab.day === 'friday' ? event.friday_afternoon_tee_time : event.saturday_afternoon_tee_time
+    }
+  })()
 
   return (
     <div className="page">

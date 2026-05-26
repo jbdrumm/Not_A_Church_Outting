@@ -956,17 +956,17 @@ function ScoresTab() {
               </p>
               <p className="text-xs text-muted text-mono" style={{ marginTop: 2 }}>
                 Par {holePar} · Hdcp #{currentHoleData?.handicap_rank || '–'}
-                {(currentHoleData?.yardage_black || currentHoleData?.yardage_blue || currentHoleData?.yardage_white || currentHoleData?.yardage_red) && (
-                  <span style={{ marginLeft: 6 }}>
-                    {[
-                      currentHoleData.yardage_black && `⬛${currentHoleData.yardage_black}`,
-                      currentHoleData.yardage_blue  && `🔵${currentHoleData.yardage_blue}`,
-                      currentHoleData.yardage_white && `⚪${currentHoleData.yardage_white}`,
-                      currentHoleData.yardage_red   && `🔴${currentHoleData.yardage_red}`,
-                    ].filter(Boolean).join(' ')}
-                  </span>
-                )}
               </p>
+              {(currentHoleData?.yardage_black || currentHoleData?.yardage_blue || currentHoleData?.yardage_white || currentHoleData?.yardage_red) && (
+                <p className="text-xs text-muted text-mono" style={{ marginTop: 1 }}>
+                  {[
+                    currentHoleData.yardage_black && `⬛ ${currentHoleData.yardage_black}`,
+                    currentHoleData.yardage_blue  && `🔵 ${currentHoleData.yardage_blue}`,
+                    currentHoleData.yardage_white && `⚪ ${currentHoleData.yardage_white}`,
+                    currentHoleData.yardage_red   && `🔴 ${currentHoleData.yardage_red}`,
+                  ].filter(Boolean).join(' · ')}
+                </p>
+              )}
             </div>
             <button onClick={() => setCurrentHole(h => Math.min(18, h + 1))} disabled={currentHole === 18}
               style={{ width: 40, height: 40, border: '1px solid var(--green-mid)', borderRadius: 'var(--radius)', background: 'var(--green-deep)', color: 'var(--cream)', fontSize: '1.2rem', cursor: 'pointer' }}>
