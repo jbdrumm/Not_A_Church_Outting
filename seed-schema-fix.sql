@@ -69,3 +69,33 @@ SELECT
 FROM round_scores
 GROUP BY is_scramble, holes_completed
 ORDER BY is_scramble, holes_completed;
+
+-- ================================================================
+-- BACKFILL scramble_team_id from scramble_teams table
+-- Links each player's scramble round_score to their team record
+-- ================================================================
+UPDATE round_scores rs
+SET scramble_team_id = st.id
+FROM scramble_teams st
+JOIN events e ON e.id = st.event_id
+WHERE rs.event_id = st.event_id
+  AND rs.is_scramble = true
+  AND rs.scramble_team_id IS NULL
+  AND (
+    -- Match round to team round definition
+    (rs.day = 'friday'   AND rs.round_time = 'afternoon' AND st.round = 'friday_afternoon')   OR
+    (rs.day = 'saturday' AND rs.round_time = 'afternoon' AND st.round = 'saturday_afternoon') OR
+    (rs.day = 'sunday'   AND rs.round_time = 'morning'   AND st.round = 'sunday_morning')
+  )
+  AND rs.player_id = ANY(st.player_ids);
+
+-- Verify scramble_team_id backfill
+SELECT 
+  e.year, rs.day, rs.round_time,
+  COUNT(*) as total_rows,
+  COUNT(rs.scramble_team_id) as has_team_id
+FROM round_scores rs
+JOIN events e ON e.id = rs.event_id
+WHERE rs.is_scramble = true
+GROUP BY e.year, rs.day, rs.round_time
+ORDER BY e.year, rs.day, rs.round_time;
