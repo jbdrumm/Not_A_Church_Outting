@@ -729,19 +729,20 @@ function ScoresTab() {
       holes.forEach(h => { holeScores[String(h.hole_number)] = h.par })
       Object.entries(rawScores).forEach(([k, v]) => { if (v) holeScores[k] = parseInt(v) })
       const holesCompleted = Object.keys(holeScores).length
-      // Convert to {total: vsPar} format for consistency with historical data
-      const vsPar = Object.entries(holeScores).reduce((sum, [holeNum, score]) => {
+      const totalScore = Object.values(holeScores).reduce((a, v) => a + (parseInt(v)||0), 0)
+      const vsPar = holesCompleted >= 18 ? Object.entries(holeScores).reduce((sum, [holeNum, score]) => {
         const hd = holes.find(h => h.hole_number === parseInt(holeNum))
         return sum + (parseInt(score)||0) - (hd?.par || 4)
-      }, 0)
-      const storageHoles = holesCompleted >= 18 ? { total: vsPar } : holeScores
+      }, 0) : null
       for (const member of groupMembers) {
         await db('upsert_round_score', {
           event_id: event.id, player_id: member.player_id, course_id: course?.id,
           day: def.day, round_time: def.rt, is_scramble: true,
-          hole_scores: storageHoles,
-          holes_completed: holesCompleted >= 18 ? 18 : holesCompleted,
+          hole_scores: holeScores,   // raw per-hole
+          holes_completed: holesCompleted,
           is_complete: holesCompleted >= 18,
+          total_score: holesCompleted >= 18 ? totalScore : null,
+          score_vs_par: vsPar,
         })
       }
       // Update scores state so dots go green
@@ -761,13 +762,20 @@ function ScoresTab() {
         Object.entries(scores[member.player_id] || {}).forEach(([k, v]) => {
           if (v) holeScores[k] = parseInt(v)
         })
-        const total = Object.values(holeScores).reduce((a, v) => a + v, 0)
+        const totalScore = Object.values(holeScores).reduce((a, v) => a + v, 0)
+        const scoreVsPar = Object.entries(holeScores).reduce((sum, [holeNum, score]) => {
+          const hd = holes.find(h => h.hole_number === parseInt(holeNum))
+          return sum + score - (hd?.par || 4)
+        }, 0)
         const holesCompleted = Object.keys(holeScores).length
         await db('upsert_round_score', {
           event_id: event.id, player_id: member.player_id, course_id: course?.id,
           day: def.day, round_time: def.rt, is_scramble: false,
-          hole_scores: holeScores, total_score: total,
-          holes_completed: holesCompleted, is_complete: holesCompleted >= 18,
+          hole_scores: holeScores,
+          holes_completed: holesCompleted,
+          is_complete: holesCompleted >= 18,
+          total_score: totalScore,
+          score_vs_par: scoreVsPar,
         })
       }
       // Update local scores state so hole dots turn green immediately

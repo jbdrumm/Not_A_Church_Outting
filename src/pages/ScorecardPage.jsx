@@ -106,12 +106,19 @@ export default function ScorecardPage() {
       Object.entries(src[member.player_id] || {}).forEach(([k, v]) => { if (v) holeScores[k] = parseInt(v) })
       const holesCompleted = Object.keys(holeScores).length
       if (holesCompleted === 0) continue
-      const total = calculateTotal(holeScores)
+      const totalScore = Object.values(holeScores).reduce((a, v) => a + v, 0)
+      const scoreVsPar = Object.entries(holeScores).reduce((sum, [holeNum, score]) => {
+        const hd = holes.find(h => h.hole_number === parseInt(holeNum))
+        return sum + score - (hd?.par || 4)
+      }, 0)
       await db('upsert_round_score', {
         event_id: event.id, player_id: member.player_id, course_id: course.id,
         day, round_time: 'morning', is_scramble: false,
-        hole_scores: holeScores, total_score: total,
-        holes_completed: holesCompleted, is_complete: holesCompleted >= 18,
+        hole_scores: holeScores,
+        holes_completed: holesCompleted,
+        is_complete: holesCompleted >= 18,
+        total_score: totalScore,
+        score_vs_par: scoreVsPar,
       })
     }
     if (!silent) showToast('Saved ✓', 'success')
@@ -534,24 +541,24 @@ function ScrambleScoreEntry({ event, roundInfo, player }) {
     const courseId = course?.id || null
     const holesCount = Object.keys(holeScores).length
 
-    // Convert per-hole strokes to {"total": vsPar} to match historical format
-    // This keeps scramble history stats consistent
-    let storageFormat = holeScores
-    if (holesCount >= 18 && holes.length > 0) {
-      const vsPar = Object.entries(holeScores).reduce((sum, [holeNum, score]) => {
-        const holeData = holes.find(h => h.hole_number === parseInt(holeNum))
-        return sum + (parseInt(score) || 0) - (holeData?.par || 4)
-      }, 0)
-      storageFormat = { total: vsPar }
-    }
+    // Calculate total_score (gross) and score_vs_par separately
+    const totalScore = Object.values(holeScores).reduce((a, v) => a + (parseInt(v)||0), 0)
+    const vsPar = holesCount >= 18 && holes.length > 0
+      ? Object.entries(holeScores).reduce((sum, [holeNum, score]) => {
+          const hd = holes.find(h => h.hole_number === parseInt(holeNum))
+          return sum + (parseInt(score)||0) - (hd?.par || 4)
+        }, 0)
+      : null
 
     for (const pid of pids) {
       await db('upsert_round_score', {
         event_id: event.id, player_id: pid, course_id: courseId,
         day, round_time, is_scramble: true,
-        hole_scores: storageFormat,
-        holes_completed: holesCount >= 18 ? 18 : holesCount,
+        hole_scores: holeScores,   // raw per-hole strokes
+        holes_completed: holesCount,
         is_complete: holesCount >= 18,
+        total_score: holesCount >= 18 ? totalScore : null,
+        score_vs_par: vsPar,
       })
     }
   }

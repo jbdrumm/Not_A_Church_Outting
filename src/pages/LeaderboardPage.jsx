@@ -133,6 +133,10 @@ export default function LeaderboardPage() {
           if (sc) return {
             ...sc,
             hole_scores: typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : (sc.hole_scores || {}),
+            // Use DB columns; fall back to computing from hole_scores for older records
+            total_score: sc.total_score || (sc.hole_scores ? Object.values(
+              typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : sc.hole_scores
+            ).reduce((a,v) => a+(parseInt(v)||0), 0) : 0),
           }
           return {
             player_id: ep.player_id,
@@ -455,19 +459,19 @@ function DetailView({ standings, holes, par, currentPlayer }) {
                             <React.Fragment key={h.hole_number}>
                               <td style={{ padding: '4px 3px', textAlign: 'center', background: rowBg, borderBottom: '1px solid var(--green-mid)', borderLeft: h.hole_number === 10 ? '2px solid var(--green-mid)' : 'none' }}>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 500, ...st }}>
-                                  {s != null ? s : '·'}
+                                  {s != null ? s : (sc.is_complete ? '✓' : '·')}
                                 </span>
                               </td>
                               {h.hole_number === 9 && (
                                 <td style={{ padding: '7px 5px', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 600, textAlign: 'center', background: rowBg, borderBottom: '1px solid var(--green-mid)', borderLeft: '2px solid var(--green-mid)', color: 'var(--gray-300)' }}>
-                                  {frontPlayed > 0 ? frontTotal : '·'}
+                                  {frontPlayed > 0 ? frontTotal : (sc.is_complete ? '–' : '·')}
                                 </td>
                               )}
                             </React.Fragment>
                           )
                         })}
                         <td style={{ padding: '7px 5px', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 600, textAlign: 'center', background: rowBg, borderBottom: '1px solid var(--green-mid)', borderLeft: '2px solid var(--green-mid)', color: 'var(--gray-300)' }}>
-                          {backPlayed > 0 ? backTotal : '·'}
+                          {backPlayed > 0 ? backTotal : (sc.is_complete ? '–' : '·')}
                         </td>
                       </>
                     )

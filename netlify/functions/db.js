@@ -267,18 +267,23 @@ async function handleAction(sql, action, p = {}) {
 
     case 'upsert_round_score': {
       const { event_id, player_id, course_id, day, round_time, is_scramble,
-              hole_scores, holes_completed, is_complete, scramble_team_id } = p
+              hole_scores, holes_completed, is_complete, scramble_team_id,
+              total_score, score_vs_par } = p
       const rows = await sql`
         INSERT INTO round_scores (event_id, player_id, course_id, day, round_time,
-          is_scramble, hole_scores, holes_completed, is_complete, scramble_team_id)
+          is_scramble, hole_scores, holes_completed, is_complete, scramble_team_id,
+          total_score, score_vs_par)
         VALUES (${event_id}, ${player_id}, ${course_id}, ${day}, ${round_time},
           ${is_scramble || false}, ${JSON.stringify(hole_scores || {})},
-          ${holes_completed || 0}, ${is_complete || false}, ${scramble_team_id || null})
+          ${holes_completed || 0}, ${is_complete || false}, ${scramble_team_id || null},
+          ${total_score || null}, ${score_vs_par != null ? score_vs_par : null})
         ON CONFLICT (event_id, player_id, course_id, day, round_time) DO UPDATE SET
           hole_scores = EXCLUDED.hole_scores,
           holes_completed = EXCLUDED.holes_completed,
           is_complete = EXCLUDED.is_complete,
-          scramble_team_id = EXCLUDED.scramble_team_id
+          scramble_team_id = EXCLUDED.scramble_team_id,
+          total_score = EXCLUDED.total_score,
+          score_vs_par = EXCLUDED.score_vs_par
         RETURNING *`
       return { data: rows[0] }
     }
@@ -465,56 +470,33 @@ async function handleAction(sql, action, p = {}) {
 
 
     case 'get_player_career_stats': {
-      // Career stats — historical data stored as single 'score' integer (no hole_scores)
-      // Current scoring stores hole_scores JSONB. Handle both.
       const rows = await sql`
         SELECT
           p.id as player_id,
           p.name,
           COUNT(*) FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true) as stroke_rounds,
           ROUND(AVG(
-            CASE
-              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int
-              WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
-              THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
-              ELSE NULL
-            END
+            COALESCE(rs.total_score,
+              CASE WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int END)
           ) FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true), 1) as avg_score,
           MIN(
-            CASE
-              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int
-              WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
-              THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
-              ELSE NULL
-            END
+            COALESCE(rs.total_score,
+              CASE WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int END)
           ) FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true) as best_round,
           MAX(
-            CASE
-              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int
-              WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
-              THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
-              ELSE NULL
-            END
+            COALESCE(rs.total_score,
+              CASE WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int END)
           ) FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true) as worst_round,
-          COUNT(*) FILTER (WHERE rs.is_scramble = true AND rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}') as scramble_rounds,
+          COUNT(*) FILTER (WHERE rs.is_scramble = true AND rs.is_complete = true) as scramble_rounds,
           ROUND(AVG(
-            CASE
-              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::numeric
-              WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
-              THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))::numeric
-              ELSE NULL
-            END
-          ) FILTER (WHERE rs.is_scramble = true AND rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'), 1) as scramble_avg
+            COALESCE(rs.score_vs_par::numeric,
+              CASE WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::numeric END)
+          ) FILTER (WHERE rs.is_scramble = true AND rs.is_complete = true), 1) as scramble_avg
         FROM players p
         JOIN round_scores rs ON rs.player_id = p.id
-        WHERE (rs.is_complete = true OR (rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'))
-          AND (rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}')
+        WHERE rs.is_complete = true
         GROUP BY p.id, p.name
-        HAVING COUNT(*) FILTER (
-          WHERE rs.is_scramble = false
-            AND (rs.is_complete = true OR (rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'))
-            AND (rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}')
-        ) > 0
+        HAVING COUNT(*) FILTER (WHERE rs.is_scramble = false AND rs.is_complete = true) > 0
         ORDER BY avg_score ASC NULLS LAST`
       // Cast BigInt fields to Number for JSON serialization
       return { data: rows.map(r => ({
@@ -535,33 +517,25 @@ async function handleAction(sql, action, p = {}) {
           c.name as course_name,
           COUNT(*) as rounds,
           ROUND(AVG(
-            CASE
-              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int
-              WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
-              THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
-              ELSE NULL
-            END
+            COALESCE(rs.total_score,
+              CASE WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int END)
           ), 1) as avg_score,
           MIN(
-            CASE
-              WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int
-              WHEN rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'
-              THEN (SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(rs.hole_scores))
-              ELSE NULL
-            END
+            COALESCE(rs.total_score,
+              CASE WHEN rs.hole_scores ? 'total' THEN (rs.hole_scores->>'total')::int END)
           ) as best,
           c.par
         FROM round_scores rs
         JOIN players p ON p.id = rs.player_id
         JOIN courses c ON c.id = rs.course_id
         WHERE rs.is_scramble = false
-          AND (rs.is_complete = true OR (rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}'))
-          AND (rs.hole_scores IS NOT NULL AND rs.hole_scores != '{}')
+          AND rs.is_complete = true
         GROUP BY p.name, c.name, c.par
         ORDER BY c.name, avg_score ASC`
       return { data: rows }
     }
 
+    
     case 'get_scramble_wins': {
       // Find winning team per scramble round, credit those players with a win
       const rows = await sql`
