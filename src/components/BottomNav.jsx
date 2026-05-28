@@ -1,5 +1,4 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { useTheme } from '../contexts/ThemeContext'
 import { useAuth } from '../contexts/AuthContext'
 
 const HomeIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -11,7 +10,6 @@ const SettingsIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentC
 
 export default function BottomNav() {
   const navigate = useNavigate()
-  const { theme, toggle } = useTheme()
   const location = useLocation()
   const { isCommissioner } = useAuth()
   const path = location.pathname
@@ -26,23 +24,6 @@ export default function BottomNav() {
 
   return (
     <>
-      {/* Theme toggle — sits at bottom-left above the nav bar */}
-      <button
-        onClick={toggle}
-        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-        style={{
-          position: 'fixed', bottom: 64, left: 12, zIndex: 101,
-          width: 34, height: 34, borderRadius: '50%',
-          border: '1px solid var(--green-mid)',
-          background: 'var(--green-dark)',
-          color: 'var(--gold)',
-          fontSize: '1rem', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: 'var(--shadow)',
-        }}>
-        {theme === 'dark' ? '\u2600' : '\u263D'}
-      </button>
-
       <nav className="bottom-nav">
         {items.map(item => (
           <button key={item.path}

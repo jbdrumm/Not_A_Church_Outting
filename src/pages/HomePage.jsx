@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { db } from '../lib/db'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { formatDate, formatTime, getActiveRound, getCourseForRound } from '../lib/golf'
 
 const STATUS_BADGE = {
@@ -20,6 +21,7 @@ export default function HomePage() {
   const [showSponsor, setShowSponsor] = useState(true)  // loaded from DB
   const [dbError, setDbError] = useState(null)
   const { player, isCommissioner, signOutPlayer } = useAuth()
+  const { theme, toggle } = useTheme()
   const navigate = useNavigate()
 
   const [playerGroup, setPlayerGroup] = useState(null)
@@ -60,6 +62,35 @@ export default function HomePage() {
 
   return (
     <div className="page">
+      {/* Theme toggle — top-left, home page only */}
+      <button
+        onClick={toggle}
+        style={{
+          position: 'fixed',
+          top: 'calc(12px + env(safe-area-inset-top))',
+          left: 16,
+          zIndex: 200,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          background: 'var(--green-dark)',
+          border: '1px solid var(--green-mid)',
+          borderRadius: 20,
+          padding: '6px 12px 6px 9px',
+          cursor: 'pointer',
+          color: 'var(--gold)',
+          fontSize: '0.95rem',
+          boxShadow: 'var(--shadow)',
+        }}
+      >
+        <span style={{ fontSize: '1rem', lineHeight: 1 }}>
+          {theme === 'dark' ? '☀' : '☽'}
+        </span>
+        <span style={{ fontSize: '0.72rem', color: 'var(--gray-400)', fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+          {theme === 'dark' ? 'Light Theme' : 'Dark Theme'}
+        </span>
+      </button>
+
       <div className="container">
         <div style={{ paddingTop: 32, paddingBottom: 24, textAlign: 'center' }}>
           {/* Golf icon — always visible */}
