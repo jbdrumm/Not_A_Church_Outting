@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useConfirm } from '../components/ConfirmModal'
 import { useNavigate } from 'react-router-dom'
 import { db } from '../lib/db'
 import { useAuth } from '../contexts/AuthContext'
@@ -181,9 +182,7 @@ function EventTab() {
       const scoredPlayers = scores?.filter(s => s.is_complete).length || 0
       if (scoredPlayers < totalPlayers) {
         const missing = totalPlayers - scoredPlayers
-        const proceed = window.confirm(
-          `⚠️ ${missing} player${missing !== 1 ? 's are' : ' is'} missing scores from ${prev.label}.\n\nContinue advancing the round anyway?`
-        )
+        const proceed = await confirm({ title: `Missing Scores`, message: `${missing} player${missing !== 1 ? 's are' : ' is'} missing scores from ${prev.label}.\n\nContinue advancing the round anyway?`, ok: 'Continue Anyway', danger: true })
         if (!proceed) return
       }
     }
@@ -205,9 +204,7 @@ function EventTab() {
     }
     const teamGen = teamGenMap[status]
     if (teamGen && isAdvancing) {
-      const generate = window.confirm(
-        `Generate ${teamGen.label} teams now?\n\nTeams will be seeded by ${teamGen.seededBy === 'combined' ? 'combined Fri AM + Sat AM scores' : teamGen.seededBy.replace('_', ' ') + ' scores'}.`
-      )
+      const generate = await confirm({ title: `Generate ${teamGen.label} Teams`, message: `Seed by ${teamGen.seededBy === 'combined' ? 'combined Fri AM + Sat AM scores' : teamGen.seededBy.replace('_', ' ') + ' scores'}?`, ok: 'Generate Teams' })
       if (generate) {
         await generateTeamsForRound(teamGen.round, selectedEventId)
         showToast(`${teamGen.label} teams generated!`, 'success')
@@ -265,11 +262,7 @@ function EventTab() {
       let forceTeamCount = null
       if (n % 4 !== 0 && n >= 4) {
         const suggested = Math.ceil(n / 4)
-        const choice = window.confirm(
-          `${n} players scored (not a multiple of 4).\n\n` +
-          `OK = create ${suggested} teams (some will have 3 players)\n` +
-          `Cancel = abort team generation`
-        )
+        const choice = await confirm({ title: `${n} Players — Odd Count`, message: `Not a multiple of 4.\nCreate ${suggested} teams? (some will have 3 players)`, ok: 'Create Teams', cancel: 'Abort' })
         if (!choice) { setSaving && setSaving(false); return }
         forceTeamCount = suggested
       }
@@ -1161,7 +1154,7 @@ function ScoresTab() {
             ].map(r => (
               <button key={r.label}
                 onClick={async () => {
-                  if (!window.confirm(`Delete ALL ${r.label} scores for ${event.year}? Cannot be undone.`)) return
+                  if (!await confirm({ title: `Reset ${r.label} Scores`, message: `Delete ALL ${r.label} scores for ${event.year}?\nThis cannot be undone.`, ok: 'Delete', danger: true })) return
                   const result = await db('reset_round', { event_id: event.id, day: r.day, round_time: r.rt })
                   showToast(`Reset ${r.label} — ${result.data?.deleted || 0} rows deleted`, 'success')
                 }}
@@ -1180,7 +1173,7 @@ function ScoresTab() {
             ].map(r => r.round ? (
               <button key={r.round}
                 onClick={async () => {
-                  if (!window.confirm(`Delete ${r.label} teams for ${event.year}?`)) return
+                  if (!await confirm({ title: `Reset ${r.label} Teams`, message: `Delete ${r.label} teams for ${event.year}?`, ok: 'Delete', danger: true })) return
                   await db('reset_scramble_teams', { event_id: event.id, round: r.round })
                   showToast(`${r.label} teams deleted`, 'success')
                 }}
@@ -1210,6 +1203,7 @@ function ScoresTab() {
 
 // ─── TEAMS TAB ────────────────────────────────────────────────────────────────
 function TeamsTab() {
+  const { confirm } = useConfirm()
   const SCRAMBLE_DEFS = [
     { key: 'friday_afternoon',   label: 'Friday PM',   seeded_by_day: 'friday',   seeded_by_rt: 'morning' },
     { key: 'saturday_afternoon', label: 'Saturday PM', seeded_by_day: 'saturday', seeded_by_rt: 'morning' },
@@ -1281,11 +1275,7 @@ function TeamsTab() {
       const n = sorted.length
       let forceTeamCount = null
       if (n % 4 !== 0 && n >= 4) {
-        const choice = window.confirm(
-          `${n} players scored (not a multiple of 4).\n\n` +
-          `OK = create ${Math.ceil(n/4)} teams (some will have 3 players)\n` +
-          `Cancel = abort`
-        )
+        const choice = await confirm({ title: `${n} Players — Odd Count`, message: `Not a multiple of 4.\nCreate ${Math.ceil(n/4)} teams? (some will have 3 players)`, ok: 'Create Teams', cancel: 'Abort' })
         if (!choice) { setGenerating(false); return }
         forceTeamCount = Math.ceil(n / 4)
       }
