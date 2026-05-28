@@ -321,3 +321,43 @@ select.input {
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: var(--green-deep); }
 ::-webkit-scrollbar-thumb { background: var(--green-mid); border-radius: 2px; }
+
+/* ══════════════════════════════════════════════════════════════
+   LIGHT THEME — outdoor readability
+   High contrast, dark text on white/light backgrounds
+   ══════════════════════════════════════════════════════════════ */
+[data-theme="light"] {
+  --green-deep:   #ffffff;
+  --green-dark:   #f0f4f0;
+  --green-mid:    #c8d8c8;
+  --green-light:  #4a8c4a;
+  --green-bright: #2d6a2d;
+  --gold:         #a07820;
+  --gold-light:   #c49a28;
+  --cream:        #1a1a1a;
+  --white:        #ffffff;
+  --gray-100:     #f8f8f8;
+  --gray-300:     #555555;
+  --gray-400:     #444444;
+  --gray-500:     #666666;
+  --gray-600:     #555555;
+  --gray-700:     #888888;
+  --red:          #cc2222;
+  --blue-birdie:  #1a52cc;
+  --yellow-eagle: #b86000;
+  --shadow:       0 2px 8px rgba(0,0,0,0.12);
+  --shadow-lg:    0 8px 32px rgba(0,0,0,0.18);
+}
+
+[data-theme="light"] html,
+[data-theme="light"] body,
+html[data-theme="light"],
+body[data-theme="light"] {
+  background: #ffffff;
+  color: #1a1a1a;
+}
+
+/* Fix specific elements that use hardcoded dark colors */
+[data-theme="light"] .score-key-item { color: #1a1a1a; }
+[data-theme="light"] .toast { color: #1a1a1a; }
+[data-theme="light"] .spinner { border-color: var(--green-mid); border-top-color: var(--gold); }
