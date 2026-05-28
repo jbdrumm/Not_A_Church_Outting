@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { db } from '../lib/db'
 import { useAuth } from '../contexts/AuthContext'
 import { calculateTotal, getActiveRound, getCourseForRound } from '../lib/golf'
+import { saveScoreWithFallback } from '../lib/offlineQueue'
+import OfflineIndicator from '../components/OfflineIndicator'
 
 export default function ScorecardPage() {
   const { player, isCommissioner } = useAuth()
@@ -111,7 +113,7 @@ export default function ScorecardPage() {
         const hd = holes.find(h => h.hole_number === parseInt(holeNum))
         return sum + score - (hd?.par || 4)
       }, 0)
-      await db('upsert_round_score', {
+      await saveScoreWithFallback({
         event_id: event.id, player_id: member.player_id, course_id: course.id,
         day, round_time: 'morning', is_scramble: false,
         hole_scores: holeScores,
@@ -204,6 +206,7 @@ export default function ScorecardPage() {
 
   return (
     <div className="page">
+      <OfflineIndicator />
       <div className="container">
         {/* Header */}
         <div style={{ paddingTop: 20, paddingBottom: 12, borderBottom: '1px solid var(--green-mid)', marginBottom: 12 }}>
@@ -551,7 +554,7 @@ function ScrambleScoreEntry({ event, roundInfo, player }) {
       : null
 
     for (const pid of pids) {
-      await db('upsert_round_score', {
+      await saveScoreWithFallback({
         event_id: event.id, player_id: pid, course_id: courseId,
         day, round_time, is_scramble: true,
         hole_scores: holeScores,   // raw per-hole strokes
