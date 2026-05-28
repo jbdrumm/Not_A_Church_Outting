@@ -92,7 +92,7 @@ export default function HomePage() {
       </button>
 
       <div className="container">
-        <div style={{ paddingTop: 32, paddingBottom: 24, textAlign: 'center' }}>
+        <div style={{ paddingTop: 64, paddingBottom: 24, textAlign: 'center' }}>
           {/* Golf icon — always visible */}
           <div style={{ fontSize: '4rem', marginBottom: 8, lineHeight: 1 }}>⛳</div>
           <h1 style={{ lineHeight: 1.1 }}>{event?.name || 'Golf Outing'}</h1>
