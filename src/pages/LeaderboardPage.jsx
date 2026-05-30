@@ -64,7 +64,6 @@ export default function LeaderboardPage() {
       } else {
         setBoardHidden(false)
       }
-
       const [holesRes, scoresRes] = await Promise.all([
         course?.id ? db('get_course_holes', { course_id: course.id }) : Promise.resolve({ data: [] }),
         db('get_round_scores', { event_id: ev.id, day, round_time }),
@@ -131,6 +130,12 @@ export default function LeaderboardPage() {
         }))
 
         setStandings(sortPlayersByScore(enriched, courseHoles))
+
+        // Auto-reveal: if board was hidden but all teams are now complete, clear the setting
+        if (boardHidden && enriched.length > 0 && enriched.every(t => t.is_complete)) {
+          await db('set_setting', { key: 'hide_scramble_board', value: 'false' })
+          setBoardHidden(false)
+        }
       } else {
         // Stroke play — show all event players
         const { data: playersRes } = await db('get_players_for_event', { event_id: ev.id })

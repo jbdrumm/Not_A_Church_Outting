@@ -375,6 +375,40 @@ function EventTab() {
                 ) : <div key={i} />
                 )}
               </div>
+
+              {/* Lock Scores — keeps round active for viewing but blocks player score entry */}
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--green-deep)', borderRadius: 'var(--radius)', padding: '10px 12px' }}>
+                <div>
+                  <p style={{ fontSize: '0.78rem', fontWeight: 600, color: selectedEvent.scores_locked ? 'var(--gold)' : 'var(--cream)', marginBottom: 2 }}>
+                    {selectedEvent.scores_locked ? '🔒 Scores Locked' : '🔓 Scores Unlocked'}
+                  </p>
+                  <p style={{ fontSize: '0.68rem', color: 'var(--gray-500)', fontFamily: 'var(--font-mono)' }}>
+                    {selectedEvent.scores_locked
+                      ? 'Players can view but not edit scores'
+                      : 'Players can enter and edit scores'}
+                  </p>
+                </div>
+                <button
+                  onClick={async () => {
+                    const next = !selectedEvent.scores_locked
+                    await db('lock_scores', { id: selectedEvent.id, locked: next })
+                    // Refresh event list to reflect new lock state
+                    const { data: evs } = await db('list_events')
+                    setEvents(evs || [])
+                    showToast(next ? '🔒 Scores locked — players can view but not edit' : '🔓 Scores unlocked — players can now enter scores', 'success')
+                  }}
+                  style={{
+                    padding: '8px 14px',
+                    border: `1px solid ${selectedEvent.scores_locked ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.15)'}`,
+                    borderRadius: 'var(--radius)',
+                    background: selectedEvent.scores_locked ? 'rgba(201,168,76,0.1)' : 'transparent',
+                    color: selectedEvent.scores_locked ? 'var(--gold)' : 'var(--gray-300)',
+                    fontFamily: 'var(--font-body)', fontSize: '0.75rem',
+                    fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}>
+                  {selectedEvent.scores_locked ? 'Unlock' : 'Lock Scores'}
+                </button>
+              </div>
             </div>
           )}
 

@@ -205,6 +205,7 @@ export default function ScorecardPage() {
   )
 
   const activeScoring = groupPlayers.filter(m => scoringFor[m.player_id])
+  const scoresLocked = event?.scores_locked === true
 
   return (
     <div className="page">
@@ -331,10 +332,18 @@ export default function ScorecardPage() {
 
             <div style={{ height: 1, background: 'var(--green-mid)', margin: '8px 0 12px' }} />
 
+            {/* Locked banner */}
+            {scoresLocked && (
+              <div style={{ textAlign: 'center', padding: '10px 12px', background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 'var(--radius)', marginBottom: 10 }}>
+                <p style={{ fontSize: '0.8rem', color: 'var(--gold)', fontWeight: 600 }}>🔒 Scores Locked</p>
+                <p style={{ fontSize: '0.72rem', color: 'var(--gray-500)', marginTop: 2 }}>Viewing only — the commissioner has locked score entry.</p>
+              </div>
+            )}
+
             {/* Action row */}
             <div style={{ display: 'flex', gap: 8 }}>
               {currentHole < 18 ? (
-                <button className="btn btn-primary btn-full" onClick={handleNextHole} disabled={saving}>
+                <button className="btn btn-primary btn-full" onClick={handleNextHole} disabled={saving || scoresLocked}>
                   {saving ? 'Saving...' : 'Save & Next →'}
                 </button>
               ) : (
@@ -357,7 +366,7 @@ export default function ScorecardPage() {
                     setSaving(false)
                     setShowSubmitted(true)
                   }}
-                  disabled={saving}>
+                  disabled={saving || scoresLocked}>
                   {saving ? 'Saving...' : 'Save Hole 18 ✓'}
                 </button>
               )}
@@ -656,13 +665,21 @@ function ScrambleScoreEntry({ event, roundInfo, player }) {
 
           <div style={{ height: 1, background: 'var(--green-mid)', margin: '8px 0 12px' }} />
 
+          {/* Locked banner */}
+          {event?.scores_locked && (
+            <div style={{ textAlign: 'center', padding: '10px 12px', background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 'var(--radius)', marginBottom: 10 }}>
+              <p style={{ fontSize: '0.8rem', color: 'var(--gold)', fontWeight: 600 }}>🔒 Scores Locked</p>
+              <p style={{ fontSize: '0.72rem', color: 'var(--gray-500)', marginTop: 2 }}>Viewing only — the commissioner has locked score entry.</p>
+            </div>
+          )}
+
           {/* Action row */}
           {currentHole < 18 ? (
-            <button className="btn btn-primary btn-full" onClick={saveAndNext} disabled={saving}>
+            <button className="btn btn-primary btn-full" onClick={saveAndNext} disabled={saving || event?.scores_locked}>
               {saving ? 'Saving...' : 'Save & Next →'}
             </button>
           ) : (
-            <button className="btn btn-primary btn-full" onClick={saveHole18} disabled={saving}>
+            <button className="btn btn-primary btn-full" onClick={saveHole18} disabled={saving || event?.scores_locked}>
               {saving ? 'Saving...' : 'Save Hole 18 ✓'}
             </button>
           )}
