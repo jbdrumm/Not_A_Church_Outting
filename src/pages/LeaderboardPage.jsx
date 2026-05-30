@@ -376,8 +376,8 @@ function DetailView({ standings, holes, par, currentPlayer }) {
   const backPar  = sortedHoles.slice(9, 18).reduce((s, h) => s + (h.par || 4), 0)
   const totalPar = frontPar + backPar
 
-  // Insert par row halfway through the field
-  const parRowAfter = Math.floor(standings.length / 2)
+  // Insert par row after the player at or just past the halfway point of the field
+  const parRowAfter = Math.ceil(standings.length / 2) - 1
 
   const PAR_ROW_BG = 'rgba(210, 180, 140, 0.18)'
   const PAR_STICKY_BG = '#2a3d2a' // solid fallback for sticky cell on par row
@@ -540,7 +540,6 @@ function DetailView({ standings, holes, par, currentPlayer }) {
                     {totalPar}
                   </td>
                   <td style={{ padding: '5px 6px', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 600, textAlign: 'right', background: PAR_ROW_BG, borderBottom: '1px solid var(--green-mid)', borderTop: '1px solid rgba(210,180,140,0.3)', color: 'rgba(210,180,140,0.8)' }}>
-                    E
                   </td>
                 </tr>
               ) : null

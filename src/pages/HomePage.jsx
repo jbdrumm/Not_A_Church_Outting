@@ -185,7 +185,7 @@ export default function HomePage() {
             {showSponsor && (
               <div style={{ textAlign: 'center', padding: '20px 16px 8px', borderTop: '1px solid var(--green-mid)', marginTop: 16 }}>
                 <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gray-500)', marginBottom: 10 }}>Brought to you by</p>
-                <img src="/sponsor-logo.webp" alt="Sponsor" style={{ maxWidth: 180, opacity: 0.85 }} />
+                <img src={theme === 'light' ? '/sponsor-logo-light.webp' : '/sponsor-logo.webp'} alt="Sponsor" style={{ maxWidth: 180, opacity: 0.85 }} />
               </div>
             )}
 
