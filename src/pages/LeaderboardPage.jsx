@@ -371,6 +371,17 @@ function DetailView({ standings, holes, par, currentPlayer }) {
     empty:  { color: 'var(--gray-700)', opacity: 0.5 },
   }
 
+  // Par row values
+  const frontPar = sortedHoles.slice(0, 9).reduce((s, h) => s + (h.par || 4), 0)
+  const backPar  = sortedHoles.slice(9, 18).reduce((s, h) => s + (h.par || 4), 0)
+  const totalPar = frontPar + backPar
+
+  // Insert par row halfway through the field
+  const parRowAfter = Math.floor(standings.length / 2)
+
+  const PAR_ROW_BG = 'rgba(210, 180, 140, 0.18)'
+  const PAR_STICKY_BG = '#2a3d2a' // solid fallback for sticky cell on par row
+
   return (
     <div>
       <p style={{ padding: '4px 16px', fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--gray-500)', textAlign: 'center', borderBottom: '1px solid var(--green-mid)' }}>
@@ -414,7 +425,6 @@ function DetailView({ standings, holes, par, currentPlayer }) {
             {standings.map((sc, idx) => {
               const isMe = currentPlayer?.id === sc.player_id
               const holeScores = typeof sc.hole_scores === 'string' ? JSON.parse(sc.hole_scores) : (sc.hole_scores || {})
-              // total_score is always vs-par now
               const holesIn = sc.holes_completed || Object.keys(holeScores).length
               const { txt, cls } = (() => {
                 if (!holesIn && !sc.is_complete) return { txt: '–', cls: '' }
@@ -423,11 +433,11 @@ function DetailView({ standings, holes, par, currentPlayer }) {
                   : d < 0 ? { txt: String(d), cls: 'score-under' }
                   : { txt: `+${d}`, cls: 'score-over' }
               })()
-              const thruTxt = sc.is_complete || holesIn >= 18 ? 'F' : String(holesIn)
               const rowBg = isMe ? 'rgba(201,168,76,0.08)' : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'
-              const stickyBg = isMe ? 'rgba(201,168,76,0.12)' : idx % 2 === 0 ? 'var(--green-deep)' : 'var(--green-dark)'
+              // Sticky cell must use a SOLID color — rgba bleeds through scroll on mobile
+              const stickyBg = isMe ? '#3a3010' : idx % 2 === 0 ? 'var(--green-deep)' : 'var(--green-dark)'
 
-              return (
+              const playerRow = (
                 <tr key={sc.player_id || idx}>
                   <td style={{
                     position: 'sticky', left: 0, zIndex: 2,
@@ -446,7 +456,6 @@ function DetailView({ standings, holes, par, currentPlayer }) {
                     </div>
                   </td>
                   {(() => {
-                    // For scramble, show gross strokes per nine; for stroke play same
                     const frontTotal = sortedHoles.slice(0,9).reduce((sum, h) => {
                       const v = holeScores[String(h.hole_number)]
                       return sum + (v != null ? parseInt(v) : 0)
@@ -492,8 +501,55 @@ function DetailView({ standings, holes, par, currentPlayer }) {
                     background: rowBg, borderBottom: '1px solid var(--green-mid)',
                     color: cls === 'score-under' ? 'var(--blue-birdie)' : cls === 'score-over' ? 'var(--red)' : 'var(--gray-300)',
                   }}>{txt}</td>
-
                 </tr>
+              )
+
+              // Par row inserted halfway through the field
+              const parRow = idx === parRowAfter - 1 ? (
+                <tr key="par-row">
+                  <td style={{
+                    position: 'sticky', left: 0, zIndex: 2,
+                    background: PAR_STICKY_BG,
+                    padding: '5px 8px',
+                    borderBottom: '1px solid var(--green-mid)',
+                    borderTop: '1px solid rgba(210,180,140,0.3)',
+                    borderRight: '1px solid var(--green-mid)', minWidth: 100,
+                  }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', fontWeight: 600, color: 'rgba(210,180,140,0.8)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Par
+                    </span>
+                  </td>
+                  {sortedHoles.map(h => (
+                    <React.Fragment key={h.hole_number}>
+                      <td style={{ padding: '5px 3px', textAlign: 'center', background: PAR_ROW_BG, borderBottom: '1px solid var(--green-mid)', borderTop: '1px solid rgba(210,180,140,0.3)', borderLeft: h.hole_number === 10 ? '2px solid var(--green-mid)' : 'none' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 500, color: 'rgba(210,180,140,0.8)' }}>
+                          {h.par}
+                        </span>
+                      </td>
+                      {h.hole_number === 9 && (
+                        <td style={{ padding: '5px 5px', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 600, textAlign: 'center', background: PAR_ROW_BG, borderBottom: '1px solid var(--green-mid)', borderTop: '1px solid rgba(210,180,140,0.3)', borderLeft: '2px solid var(--green-mid)', color: 'rgba(210,180,140,0.8)' }}>
+                          {frontPar}
+                        </td>
+                      )}
+                    </React.Fragment>
+                  ))}
+                  <td style={{ padding: '5px 5px', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 600, textAlign: 'center', background: PAR_ROW_BG, borderBottom: '1px solid var(--green-mid)', borderTop: '1px solid rgba(210,180,140,0.3)', borderLeft: '2px solid var(--green-mid)', color: 'rgba(210,180,140,0.8)' }}>
+                    {backPar}
+                  </td>
+                  <td style={{ padding: '5px 6px', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 600, textAlign: 'right', background: PAR_ROW_BG, borderBottom: '1px solid var(--green-mid)', borderTop: '1px solid rgba(210,180,140,0.3)', borderLeft: '2px solid var(--green-mid)', color: 'rgba(210,180,140,0.8)' }}>
+                    {totalPar}
+                  </td>
+                  <td style={{ padding: '5px 6px', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 600, textAlign: 'right', background: PAR_ROW_BG, borderBottom: '1px solid var(--green-mid)', borderTop: '1px solid rgba(210,180,140,0.3)', color: 'rgba(210,180,140,0.8)' }}>
+                    E
+                  </td>
+                </tr>
+              ) : null
+
+              return (
+                <React.Fragment key={sc.player_id || idx}>
+                  {playerRow}
+                  {parRow}
+                </React.Fragment>
               )
             })}
           </tbody>

@@ -35,11 +35,17 @@ export function sortPlayersByScore(scorecards, courseHoles = []) {
     if (aFin && !bFin) return -1
     if (bFin && !aFin) return 1
 
-    // Tiebreaker 2: among in-progress, more holes played ranks higher
-    // (closer to finishing = less volatile = awarded higher position)
+    // Tiebreaker 2: among in-progress, sort by holes played
+    // If score is over par (positive): more holes played = ranked higher (closer to finishing)
+    // If score is even or under par (0 or negative): fewer holes played = ranked higher
+    //   (they're leading without having used all their holes yet)
     const aHoles = a.holes_completed || Object.keys(a.hole_scores || {}).length
     const bHoles = b.holes_completed || Object.keys(b.hole_scores || {}).length
-    if (!aFin && !bFin && aHoles !== bHoles) return bHoles - aHoles
+    if (!aFin && !bFin && aHoles !== bHoles) {
+      const score = a.total_score // same for both since we passed total_score check
+      if (score > 0) return bHoles - aHoles  // over par: more holes played ranks higher
+      else return aHoles - bHoles             // even/under: fewer holes played ranks higher
+    }
 
     // Tiebreaker 3: handicap hole order (for final locked standings)
     for (const holeNum of holesByHandicap) {
